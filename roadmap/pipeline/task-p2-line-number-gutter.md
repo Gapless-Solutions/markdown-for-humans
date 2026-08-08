@@ -4,7 +4,7 @@
 
 - **Task name:** Source Line-Number Gutter
 - **Slug:** line-number-gutter
-- **Status:** planned
+- **Status:** in-progress
 - **Created:** 2026-08-08
 - **Last updated:** 2026-08-08
 - **Shipped:** _(pending)_
@@ -96,20 +96,47 @@
 - `computeBlockLineRanges` serializes every block; on large docs this must
   stay off the typing path — debounce and reuse the serializer cache where
   possible. Budget: no perceptible typing lag on 1000-block documents.
+- **Measured 2026-08-08:** a full recompute over a 1000-block document (mixed
+  headings/paragraphs, jsdom + ts-jest) takes ~9ms, and it only runs 200ms
+  after the last keystroke — comfortably inside the budget, no caching needed.
 
 ---
 
 ## 6. Work Breakdown
 
-- [ ] **Phase 1:** decoration plugin + setting plumb (TDD on the decoration
+- [x] **Phase 1:** decoration plugin + setting plumb (TDD on the decoration
       positions via `computeBlockLineRanges` fixtures)
-- [ ] **Phase 2:** CSS + toggle command + QA on large documents
+- [x] **Phase 2:** CSS + toggle command + QA on large documents
+      _(automated tests pass; manual QA in the dev host still pending)_
 
 ---
 
 ## 7. Implementation Log
 
-_(To be filled during implementation)_
+### 2026-08-08 – Implemented (both phases)
+
+- **What:** `lineNumberGutter.ts` holds a ProseMirror plugin whose state is
+  `{ enabled, decorations }`. Numbers come from `computeBlockLineRanges` (the
+  Copy-as-AI-Context math, now exported), mapped block-index → start line and
+  turned into `Decoration.node` attributes (`data-source-line` +
+  `md-line-number-block`); the number itself is a CSS `::before`, so it never
+  enters the document or the selection. The plugin also contributes a
+  `md-line-numbers` class to the editable via `props.attributes`, which reserves
+  the gutter's left padding — only while the gutter is on.
+- **Recompute:** debounced 200ms in the plugin's `view.update`; between the edit
+  and the recompute the existing decorations are mapped through the
+  transactions, so they stay pinned to their blocks (stale for one interval,
+  never detached). Enabling and blank-line-mode changes refresh immediately.
+- **Shared math:** `aiContextReference.ts` now exports `computeBlockLineRanges`,
+  `resolveMarkdownSerialize`, and `collectTopLevelBlockPositions`; the two
+  existing consumers were switched onto the helpers, removing the duplicated
+  serializer-resolution blocks.
+- **Files:** `src/webview/extensions/lineNumberGutter.ts` (new),
+  `src/webview/utils/aiContextReference.ts`, `src/webview/editor.ts`,
+  `src/webview/editor.css`, `src/editor/MarkdownEditorProvider.ts`,
+  `src/extension.ts`, `package.json`,
+  `src/__tests__/webview/lineNumberGutter.test.ts` (new, 13 tests),
+  `src/__tests__/editor/undoSync.test.ts` (payload assertions).
 
 ---
 
@@ -118,6 +145,21 @@ _(To be filled during implementation)_
 - **Block start lines only:** exactness over density — a number that is
   sometimes wrong is worse than a sparser gutter that is always right.
 - **Off by default:** reading-first product; the gutter is a power-user aid.
+- **Node decorations, not widgets:** a widget between blocks is positioned at
+  its static position, which sits inside the next block's collapsed top margin —
+  headings would visibly drift. An attribute on the block plus an absolutely
+  positioned `::before` aligns with the block's own box, exactly.
+- **Clipping blocks handled explicitly:** the number is drawn outside the
+  block's box, so any block that clips its overflow would swallow it. Tables
+  (`.tableWrapper`, `overflow-x: auto` for wide-table scrolling) get a negative
+  margin + matching padding, so the number lands inside the padding box — same
+  content position, still scrollable. Mermaid wrappers swap `overflow: hidden`
+  for `clip` + `overflow-clip-margin`. Both rules apply only while the gutter is
+  on. A future block type that clips and is neither of these shows no number —
+  degraded, never wrong.
+- **Gutter lives in padding, not margin:** the drag handle is positioned at
+  `editorRect.left - 32`, i.e. in the editable's margin, so putting the numbers
+  in the padding keeps the two from colliding.
 
 ---
 

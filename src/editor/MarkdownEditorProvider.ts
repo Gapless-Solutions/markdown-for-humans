@@ -527,7 +527,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         e.affectsConfiguration('markdownForHumans.zoom') ||
         e.affectsConfiguration('markdownForHumans.enableMath') ||
         e.affectsConfiguration('markdownForHumans.formattingShortcuts.enabled') ||
-        e.affectsConfiguration('markdownForHumans.sourceJump.modifier')
+        e.affectsConfiguration('markdownForHumans.sourceJump.modifier') ||
+        e.affectsConfiguration('markdownForHumans.lineNumbers.enabled')
       ) {
         const config = vscode.workspace.getConfiguration();
         const skipWarning = config.get<boolean>('markdownForHumans.imageResize.skipWarning', false);
@@ -587,6 +588,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           blankLineMode,
           enableMath: enableMath,
           sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'ctrl'),
+          lineNumbersEnabled: config.get<boolean>('markdownForHumans.lineNumbers.enabled', false),
         });
       }
     });
@@ -710,6 +712,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       blankLineMode,
       enableMath: enableMath,
       sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'ctrl'),
+      lineNumbersEnabled: config.get<boolean>('markdownForHumans.lineNumbers.enabled', false),
     });
   }
 
@@ -824,6 +827,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           blankLineMode,
           enableMath: enableMath,
           sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'ctrl'),
+          lineNumbersEnabled: config.get<boolean>('markdownForHumans.lineNumbers.enabled', false),
         });
         // A reveal queued before this webview finished loading (Open in
         // Rendered View at Cursor, or a link with a #L42/:42/#heading target

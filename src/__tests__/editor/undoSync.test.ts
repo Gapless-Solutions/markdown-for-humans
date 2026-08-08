@@ -213,6 +213,7 @@ describe('MarkdownEditorProvider undo/redo safety', () => {
       enableMath: true,
       formattingShortcutsEnabled: true,
       sourceJumpModifier: 'ctrl',
+      lineNumbersEnabled: false,
     });
   });
 
@@ -259,6 +260,7 @@ describe('MarkdownEditorProvider undo/redo safety', () => {
       enableMath: true,
       formattingShortcutsEnabled: true,
       sourceJumpModifier: 'ctrl',
+      lineNumbersEnabled: false,
     });
 
     getConfigurationSpy.mockRestore();

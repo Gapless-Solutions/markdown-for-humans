@@ -30,7 +30,7 @@ export interface SelectionBlockRange {
   endLine: number;
 }
 
-interface BlockPos {
+export interface BlockPos {
   from: number;
   to: number;
 }
@@ -99,10 +99,42 @@ function isEmptyParagraphJsonNode(node: JSONContent | undefined): boolean {
   });
 }
 
-interface BlockLineRange {
+export interface BlockLineRange {
   jsonIdx: number;
   startLine: number;
   endLine: number;
+}
+
+/**
+ * Resolve the markdown serializer the editor is wired with.
+ *
+ * `editor.markdown` is the direct handle; `editor.storage.markdown` is
+ * `{ manager: MarkdownManager }` in @tiptap/markdown >=3 (not a manager
+ * itself), so the fallback unwraps `.manager`. Returns null when no
+ * serializer is available — every caller treats that as "cannot map lines".
+ */
+export function resolveMarkdownSerialize(editor: Editor): ((json: JSONContent) => string) | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editorAny = editor as any;
+  const direct: MarkdownManager | undefined = editorAny.markdown;
+  const fromStorage: MarkdownManager | undefined = editorAny.storage?.markdown?.manager;
+  const markdownManager: MarkdownManager | undefined = direct ?? fromStorage;
+  const serialize = markdownManager?.serialize?.bind(markdownManager);
+  return typeof serialize === 'function' ? serialize : null;
+}
+
+/**
+ * Snapshot each top-level block's ProseMirror position range, in document order.
+ * Index i here corresponds to index i in `editor.getJSON().content` (callers
+ * verify the two lengths match before relying on that correspondence).
+ */
+export function collectTopLevelBlockPositions(editor: Editor): BlockPos[] {
+  const blocks: BlockPos[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  editor.state.doc.content.forEach((node: any, offset: number) => {
+    blocks.push({ from: offset + 1, to: offset + 1 + node.nodeSize });
+  });
+  return blocks;
 }
 
 /**
@@ -116,7 +148,7 @@ interface BlockLineRange {
  * paragraphs, the next block's first line is `prevLastLine + 2 + N`
  * (one separator newline, N extra blank-line newlines, then the block's text).
  */
-function computeBlockLineRanges(
+export function computeBlockLineRanges(
   content: JSONContent[],
   serialize: (json: JSONContent) => string,
   blankLineMode: BlankLineMode
@@ -234,15 +266,8 @@ export function computeSelectionBlockRange(
 ): SelectionBlockRangeResult {
   const { from, to, empty } = editor.state.selection;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const editorAny = editor as any;
-  const direct: MarkdownManager | undefined = editorAny.markdown;
-  // editor.storage.markdown is `{ manager: MarkdownManager }` in @tiptap/markdown >=3,
-  // not a manager itself, so unwrap `.manager` when falling back.
-  const fromStorage: MarkdownManager | undefined = editorAny.storage?.markdown?.manager;
-  const markdownManager: MarkdownManager | undefined = direct ?? fromStorage;
-  const serialize = markdownManager?.serialize?.bind(markdownManager);
-  if (typeof serialize !== 'function') {
+  const serialize = resolveMarkdownSerialize(editor);
+  if (!serialize) {
     return { ok: false, reason: 'no-serializer' };
   }
   if (typeof editor.getJSON !== 'function') {
@@ -257,11 +282,7 @@ export function computeSelectionBlockRange(
   // Walk the live editor doc to learn each top-level block's PM position range.
   // Include empty paragraphs here so a selection inside one still has somewhere
   // to land — we'll snap to the nearest content block when computing lines.
-  const allBlocks: BlockPos[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  editor.state.doc.content.forEach((node: any, offset: number) => {
-    allBlocks.push({ from: offset + 1, to: offset + 1 + node.nodeSize });
-  });
+  const allBlocks = collectTopLevelBlockPositions(editor);
   if (allBlocks.length === 0) {
     return { ok: false, reason: 'no-blocks', detail: 'blockCount=0' };
   }
@@ -335,22 +356,13 @@ export function findBlockPosForLine(
   line: number,
   blankLineMode: BlankLineMode = 'preserve'
 ): number | null {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const editorAny = editor as any;
-  const direct: MarkdownManager | undefined = editorAny.markdown;
-  const fromStorage: MarkdownManager | undefined = editorAny.storage?.markdown?.manager;
-  const markdownManager: MarkdownManager | undefined = direct ?? fromStorage;
-  const serialize = markdownManager?.serialize?.bind(markdownManager);
-  if (typeof serialize !== 'function' || typeof editor.getJSON !== 'function') return null;
+  const serialize = resolveMarkdownSerialize(editor);
+  if (!serialize || typeof editor.getJSON !== 'function') return null;
 
   const liveJson = editor.getJSON();
   if (!Array.isArray(liveJson.content) || liveJson.content.length === 0) return null;
 
-  const allBlocks: BlockPos[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  editor.state.doc.content.forEach((node: any, offset: number) => {
-    allBlocks.push({ from: offset + 1, to: offset + 1 + node.nodeSize });
-  });
+  const allBlocks = collectTopLevelBlockPositions(editor);
   if (allBlocks.length !== liveJson.content.length) return null;
 
   let ranges: BlockLineRange[];

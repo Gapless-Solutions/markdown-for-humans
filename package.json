@@ -118,6 +118,10 @@
         "title": "Markdown for Humans: Toggle Formatting Shortcuts (Cmd/Ctrl+B/I/U)"
       },
       {
+        "command": "markdownForHumans.toggleLineNumbers",
+        "title": "Markdown for Humans: Toggle Source Line Numbers"
+      },
+      {
         "command": "markdownForHumans.openSourceAtCursor",
         "title": "Markdown for Humans: Open Source at This Position"
       },
@@ -289,6 +293,12 @@
             "No mouse gesture; only the command palette entry"
           ],
           "description": "Modifier key for the double-click gesture that opens the raw markdown source at the clicked block's line.",
+          "scope": "application"
+        },
+        "markdownForHumans.lineNumbers.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a left gutter with each block's start line in the saved markdown file. Numbers are per block, not per wrapped line, so they always match the source file.",
           "scope": "application"
         }
       }

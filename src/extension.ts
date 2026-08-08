@@ -186,6 +186,23 @@ export function activate(context: vscode.ExtensionContext) {
       );
     })
   );
+
+  // Same persisted-setting pattern for the source line-number gutter.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownForHumans.toggleLineNumbers', async () => {
+      const config = vscode.workspace.getConfiguration();
+      const current = config.get<boolean>('markdownForHumans.lineNumbers.enabled', false);
+      await config.update(
+        'markdownForHumans.lineNumbers.enabled',
+        !current,
+        vscode.ConfigurationTarget.Global
+      );
+      vscode.window.setStatusBarMessage(
+        `Markdown for Humans: source line numbers ${!current ? 'shown' : 'hidden'}`,
+        3000
+      );
+    })
+  );
 }
 
 export function deactivate() {

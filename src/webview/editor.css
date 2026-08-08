@@ -1510,9 +1510,63 @@
   }
   
   /* ============================================
+     Source Line-Number Gutter
+     (markdownForHumans.lineNumbers.enabled — off by default)
+     ============================================ */
+
+  /* The gutter lives in the editable's own left padding, so the drag handle —
+     positioned in the margin at `editorRect.left - 32` — is unaffected. */
+  .markdown-editor.md-line-numbers {
+    --md-line-gutter-width: calc(var(--md-base-size) * 2.8);
+    padding-left: var(--md-line-gutter-width);
+  }
+
+  .markdown-editor.md-line-numbers .md-line-number-block {
+    position: relative;
+  }
+
+  .markdown-editor.md-line-numbers .md-line-number-block::before {
+    content: attr(data-source-line);
+    position: absolute;
+    top: 0;
+    left: calc(-1 * var(--md-line-gutter-width));
+    width: calc(var(--md-line-gutter-width) - 0.7em);
+    text-align: right;
+    font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, Consolas, monospace);
+    font-size: calc(var(--md-base-size) * 0.78);
+    line-height: inherit;
+    color: var(--md-muted);
+    opacity: 0.65;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+  }
+
+  /* Blocks that clip their own overflow would swallow a number drawn outside
+     their box. Overflow clips at the PADDING edge, so widening the wrapper
+     leftwards and drawing the number inside that padding keeps it visible
+     without moving the content or losing horizontal scrolling. */
+  .markdown-editor.md-line-numbers .tableWrapper.md-line-number-block {
+    margin-left: calc(-1 * var(--md-line-gutter-width));
+    padding-left: var(--md-line-gutter-width);
+  }
+
+  .markdown-editor.md-line-numbers .tableWrapper.md-line-number-block::before {
+    left: 0;
+  }
+
+  /* Mermaid wrappers clip to keep the diagram inside their rounded border;
+     `clip` + a clip margin keeps that while letting the gutter through. */
+  .markdown-editor.md-line-numbers .mermaid-wrapper.md-line-number-block {
+    overflow: clip;
+    overflow-clip-margin: var(--md-line-gutter-width);
+  }
+
+  /* ============================================
      Drag & Drop
      ============================================ */
-  
+
   .ProseMirror.drag-over {
     background-color: var(--md-selection);
     outline: 2px dashed var(--md-focus);

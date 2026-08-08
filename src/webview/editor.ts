@@ -37,6 +37,11 @@ import { BlankLinePreservation } from './extensions/blankLinePreservation';
 import { OrderedListMarkdownFix } from './extensions/orderedListMarkdownFix';
 import { HtmlPreservingTable } from './extensions/htmlPreservingTable';
 import { DraggableBlocks } from './extensions/draggableBlocks';
+import {
+  LineNumberGutter,
+  refreshLineNumbers,
+  setLineNumbersEnabled,
+} from './extensions/lineNumberGutter';
 import { DocumentAuditExtension } from './features/auditDocument';
 import { createFormattingToolbar, createTableMenu, updateToolbarStates } from './BubbleMenuView';
 import { getEditorMarkdownForSync } from './utils/markdownSerialization';
@@ -267,6 +272,10 @@ let blankLineMode: BlankLineMode = 'strip';
 // keybindings instead of toggling bold/italic/underline in-editor.
 let formattingShortcutsEnabled = true;
 let sourceJumpModifier: SourceJumpModifier = 'ctrl';
+// Mirrors `markdownForHumans.lineNumbers.enabled`. Captured before the editor
+// exists so the gutter extension can be configured with the right initial state
+// on the very first `update` message.
+let lineNumbersEnabled = false;
 
 // Pending document-dirty queries, keyed by requestId. The host replies with
 // `documentDirtyResponse`; we look up the resolver here.
@@ -718,6 +727,12 @@ function initializeEditor(initialContent: string) {
         } as any),
         DraggableBlocks,
         DocumentAuditExtension,
+        LineNumberGutter.configure({
+          enabled: lineNumbersEnabled,
+          // The gutter counts lines the way the saver writes them, so it has to
+          // read the live blank-line policy rather than a snapshot.
+          getBlankLineMode: () => blankLineMode,
+        }),
       ],
       // Don't pass content here - we'll set it after init with contentType: 'markdown'
       editorProps: {
@@ -2049,6 +2064,17 @@ function applyEditorSettings(message: Record<string, any>) {
   }
   if (typeof message.sourceJumpModifier === 'string') {
     sourceJumpModifier = normalizeSourceJumpModifier(message.sourceJumpModifier);
+  }
+  if (typeof message.lineNumbersEnabled === 'boolean') {
+    lineNumbersEnabled = message.lineNumbersEnabled;
+    // Before the editor exists the value is only captured — `initializeEditor`
+    // configures the extension with it.
+    if (editor) setLineNumbersEnabled(editor, lineNumbersEnabled);
+  }
+  // Blank-line mode (already applied by the caller) changes how many lines the
+  // saved file has, so any visible numbers have to be recomputed.
+  if (editor && lineNumbersEnabled) {
+    refreshLineNumbers(editor, blankLineMode);
   }
 }
 
