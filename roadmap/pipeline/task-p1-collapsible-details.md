@@ -4,7 +4,7 @@
 
 - **Task name:** Collapsible `<details>` Sections
 - **Slug:** collapsible-details
-- **Status:** planned
+- **Status:** in-progress
 - **Created:** 2026-08-08
 - **Last updated:** 2026-08-08
 - **Shipped:** _(pending)_
@@ -195,23 +195,43 @@
 
 ## 6. Work Breakdown
 
-- [ ] **Phase 1: Round-trip core (bug fix)** — parse + serialize with tests; no UI polish
-  - [ ] Failing tests first: load→serialize preservation, `open` attr, nested, no-summary
-  - [ ] `detailsSection`/`detailsSummary` nodes + `parseMarkdown` (html token)
-  - [ ] `renderMarkdown` canonical form; blank-line policy compliance
-- [ ] **Phase 2: Editor UX** — NodeView, chevron toggle, CSS, summary editing rules
-- [ ] **Phase 3: Authoring** — toolbar wrap/insert command; `open` attribute control
-- [ ] **Phase 4: Boundaries** — paste keep-rule; HTML export test
+- [x] **Phase 1: Round-trip core (bug fix)** — parse + serialize with tests; no UI polish
+  - [x] Failing tests first: load→serialize preservation, `open` attr, nested, no-summary
+  - [x] `detailsSection`/`detailsSummary` nodes + `parseMarkdown` (html token)
+  - [x] `renderMarkdown` canonical form; blank-line policy compliance
+- [x] **Phase 2: Editor UX** — NodeView, chevron toggle, CSS, summary editing rules
+- [x] **Phase 3: Authoring** — toolbar wrap/insert command; `open` attribute control
+- [x] **Phase 4: Boundaries** — paste keep-rule; HTML export test
 - [ ] **Testing** — Jest throughout (TDD); manual QA in Extension Development Host
-  - [ ] Round-trip suite (corruption regression)
-  - [ ] NodeView interaction tests (toggle, editability)
-  - [ ] Paste + export tests
+  - [x] Round-trip suite (corruption regression)
+  - [x] NodeView interaction tests (toggle, editability)
+  - [x] Paste + export tests
+  - [ ] Manual QA in Extension Development Host
 
 ---
 
 ## 7. Implementation Log
 
-_(To be filled during implementation)_
+### 2026-08-08 – Phases 1–4 implemented
+
+- **What:** Full feature landed with 22 Jest tests. Round-trip core: a
+  details-aware lexer pass (`installDetailsBlockMerger`) re-joins the token
+  run marked splits at blank lines; must install BEFORE the blank-line
+  normalizer, whose scaffolding filter drops the bare `</details>` fragment
+  the merger needs. `DetailsSection.parseMarkdown` hooks token name `html`
+  and returns `[]` for non-details tokens so the default HTML fallback still
+  runs. Body serialization mirrors the doc-level blank-line algorithm
+  ('\n\n' between blocks, +'\n' per empty paragraph).
+- **Files:** `src/webview/extensions/detailsSection.ts` (nodes + merger +
+  commands + NodeView), `src/webview/editor.ts` (registration + install
+  order), `src/webview/editor.css`, `src/webview/BubbleMenuView.ts`
+  (Section dropdown), `src/webview/utils/pasteHandler.ts` (turndown keep),
+  `src/webview/utils/exportContent.ts` (NodeView→native details swap),
+  `src/__tests__/webview/detailsSection.test.ts`.
+- **Notes:** Only `html` tokens are scanned for details tags, so a literal
+  `</details>` inside a fenced code block cannot end the region. Byte-exact
+  round-trip verified for canonical form, `open`, nested blocks, no-summary,
+  summary markdown, and blank-line runs in the body.
 
 ---
 
@@ -222,6 +242,19 @@ _(To be filled during implementation)_
   Rationale: readers collapse/expand constantly — that must not churn the file or git diffs.
 - **Div-based NodeView over native `<details>`:** native toggle fires on any summary
   click, fighting text editing; a controlled NodeView keeps editing and toggling separable.
+- **Chevron-only toggle (not summary click):** the summary row is editable inline, so
+  clicking its text places the cursor; only the chevron toggles. Deviates from the
+  original Flow 3 sketch in favor of unambiguous editing.
+- **New sections insert as `<details open>`:** the author is actively writing the body,
+  and every renderer shows the new section's content until they flip the default via
+  "Toggle expanded by default".
+- **Summary parsed as markdown inline:** `**bold**` in a summary round-trips
+  byte-exactly (bold mark ↔ `**bold**`). HTML formatting like `<b>` normalizes to the
+  markdown form on save — a documented normalization, matching how the editor treats
+  emphasis elsewhere.
+- **Empty `<summary></summary>` is dropped on save:** the serializer only emits a
+  summary element when it has content, so a source without one never gains an invented
+  element (and an explicitly empty one is normalized away).
 
 ---
 
