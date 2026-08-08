@@ -266,7 +266,7 @@ let blankLineMode: BlankLineMode = 'strip';
 // editor stops intercepting Cmd/Ctrl+B/I/U so those chords reach VS Code's own
 // keybindings instead of toggling bold/italic/underline in-editor.
 let formattingShortcutsEnabled = true;
-let sourceJumpModifier: SourceJumpModifier = 'alt';
+let sourceJumpModifier: SourceJumpModifier = 'ctrl';
 
 // Pending document-dirty queries, keyed by requestId. The host replies with
 // `documentDirtyResponse`; we look up the resolver here.
@@ -333,6 +333,23 @@ async function insertAndEditMath(editorInstance: Editor, mode: 'inline' | 'block
       latex: result.latex,
     })
   );
+}
+
+/**
+ * Scroll to the heading matching a GitHub-style slug. Returns false when no
+ * heading with that slug exists.
+ */
+function scrollToHeadingSlug(editorInstance: Editor, slug: string): boolean {
+  const outline = buildOutlineFromEditor(editorInstance);
+  const existingSlugs = new Set<string>();
+  const headingMap = new Map<string, number>();
+  outline.forEach(entry => {
+    headingMap.set(generateHeadingSlug(entry.text, existingSlugs), entry.pos);
+  });
+  const headingPos = headingMap.get(slug);
+  if (headingPos === undefined) return false;
+  scrollToHeading(editorInstance, headingPos);
+  return true;
 }
 
 /**
@@ -1032,24 +1049,8 @@ function initializeEditor(initialContent: string) {
       if (linkKind === 'anchor') {
         console.log('[MD4H Webview] Handling anchor link:', href);
         const slug = href.slice(1);
-        if (editorInstance) {
-          // Find heading by slug
-          const outline = buildOutlineFromEditor(editorInstance);
-          const existingSlugs = new Set<string>();
-          const headingMap = new Map<string, number>();
-
-          outline.forEach(entry => {
-            const headingSlug = generateHeadingSlug(entry.text, existingSlugs);
-            headingMap.set(headingSlug, entry.pos);
-          });
-
-          const headingPos = headingMap.get(slug);
-          if (headingPos !== undefined) {
-            console.log('[MD4H Webview] Scrolling to heading at position:', headingPos);
-            scrollToHeading(editorInstance, headingPos);
-          } else {
-            console.warn('[MD4H Webview] Heading not found for slug:', slug);
-          }
+        if (editorInstance && !scrollToHeadingSlug(editorInstance, slug)) {
+          console.warn('[MD4H Webview] Heading not found for slug:', slug);
         }
         return;
       }
@@ -1684,14 +1685,19 @@ window.addEventListener('message', (event: MessageEvent) => {
         postSourceJump(editor);
         break;
       }
-      case 'revealLine': {
+      case 'revealTarget': {
         if (!editor) return;
-        const line = message.line as number;
-        if (typeof line !== 'number' || line < 1) return;
-        const pos = findBlockPosForLine(editor, line, blankLineMode);
-        if (pos !== null) {
-          scrollToHeading(editor, pos);
-          editor.commands.setTextSelection(pos);
+        const slug = typeof message.slug === 'string' ? message.slug : undefined;
+        const line = typeof message.line === 'number' ? message.line : undefined;
+        if (slug && scrollToHeadingSlug(editor, slug)) {
+          break;
+        }
+        if (line !== undefined && line >= 1) {
+          const pos = findBlockPosForLine(editor, line, blankLineMode);
+          if (pos !== null) {
+            scrollToHeading(editor, pos);
+            editor.commands.setTextSelection(pos);
+          }
         }
         break;
       }

@@ -7,7 +7,7 @@
 import * as vscode from 'vscode';
 import { MarkdownEditorProvider } from './editor/MarkdownEditorProvider';
 import { WordCountFeature } from './features/wordCount';
-import { getActiveWebviewPanel, queuePendingReveal, takePendingReveal } from './activeWebview';
+import { getActiveWebviewPanel, openRenderedMarkdown } from './activeWebview';
 import { outlineViewProvider } from './features/outlineView';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -156,9 +156,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Source position jump, reverse direction: raw text editor -> rendered view
-  // scrolled to the block containing the cursor's line. The reveal is queued
-  // because a freshly opened webview can only act on it after its 'ready'
-  // handshake; for an already-open webview the timeout fallback delivers it.
+  // scrolled to the block containing the cursor's line.
   context.subscriptions.push(
     vscode.commands.registerCommand('markdownForHumans.openRenderedAtCursor', async () => {
       const activeEditor = vscode.window.activeTextEditor;
@@ -166,20 +164,7 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       const line = activeEditor.selection.active.line + 1;
-      const uriKey = activeEditor.document.uri.toString();
-      queuePendingReveal(uriKey, line);
-      await vscode.commands.executeCommand(
-        'vscode.openWith',
-        activeEditor.document.uri,
-        'markdownForHumans.editor'
-      );
-      setTimeout(() => {
-        const pending = takePendingReveal(uriKey);
-        const panel = getActiveWebviewPanel();
-        if (pending !== undefined && panel) {
-          panel.webview.postMessage({ type: 'revealLine', line: pending });
-        }
-      }, 300);
+      await openRenderedMarkdown(activeEditor.document.uri, { line });
     })
   );
 

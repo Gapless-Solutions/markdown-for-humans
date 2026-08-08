@@ -62,11 +62,11 @@ describe('matchesSourceJumpGesture', () => {
 });
 
 describe('normalizeSourceJumpModifier', () => {
-  it('passes valid values through and defaults the rest to alt', () => {
+  it('passes valid values through and defaults the rest to ctrl', () => {
     expect(normalizeSourceJumpModifier('ctrl')).toBe('ctrl');
     expect(normalizeSourceJumpModifier('disabled')).toBe('disabled');
-    expect(normalizeSourceJumpModifier('bogus')).toBe('alt');
-    expect(normalizeSourceJumpModifier(undefined)).toBe('alt');
+    expect(normalizeSourceJumpModifier('bogus')).toBe('ctrl');
+    expect(normalizeSourceJumpModifier(undefined)).toBe('ctrl');
   });
 });
 

@@ -21,7 +21,7 @@ const VALID_MODIFIERS: readonly SourceJumpModifier[] = ['alt', 'ctrl', 'shift', 
 export function normalizeSourceJumpModifier(value: unknown): SourceJumpModifier {
   return VALID_MODIFIERS.includes(value as SourceJumpModifier)
     ? (value as SourceJumpModifier)
-    : 'alt';
+    : 'ctrl';
 }
 
 export interface ModifierKeys {
