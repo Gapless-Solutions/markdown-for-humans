@@ -86,6 +86,16 @@ turndown.keep(['sup', 'sub']);
  */
 turndown.keep(['table']);
 
+/**
+ * Collapsible sections must be kept as raw HTML for the same reason as
+ * tables: turndown has no rules for DETAILS/SUMMARY, so the default block
+ * handler would flatten the summary and body into plain paragraphs and the
+ * collapsible structure would be lost. Keeping the element emits its
+ * outerHTML verbatim; the details lexer merger + DetailsSection extension
+ * then parse it into a real collapsible section node.
+ */
+turndown.keep(['details']);
+
 // Remove elements that shouldn't be in markdown
 turndown.remove(['script', 'style', 'noscript', 'iframe', 'object', 'embed']);
 

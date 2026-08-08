@@ -30,10 +30,35 @@ export interface ExportContent {
  * @param editor - TipTap editor instance
  * @returns Export-ready content with HTML and Mermaid PNGs
  */
+/**
+ * Replace the editor's details NodeView markup (div + chevron button) with
+ * native `<details>`/`<summary>` elements so exports stay collapsible in
+ * HTML and render cleanly in PDF/Word. A section expanded in the editor
+ * exports with the `open` attribute, so what the user sees is what prints.
+ */
+function replaceDetailsNodeViews(clonedContent: HTMLElement): void {
+  const sections = Array.from(clonedContent.querySelectorAll('.details-section'));
+  for (const section of sections) {
+    const details = document.createElement('details');
+    if (!section.classList.contains('details-collapsed')) {
+      details.setAttribute('open', '');
+    }
+    const content = section.querySelector('.details-content');
+    const source = content ?? section;
+    for (const child of Array.from(source.childNodes)) {
+      details.appendChild(child.cloneNode(true));
+    }
+    section.parentNode?.replaceChild(details, section);
+  }
+}
+
 export async function collectExportContent(editor: Editor): Promise<ExportContent> {
   // Get HTML content from editor
   const editorElement = editor.view.dom as HTMLElement;
   const clonedContent = editorElement.cloneNode(true) as HTMLElement;
+
+  // Swap details NodeViews for native collapsible elements
+  replaceDetailsNodeViews(clonedContent);
 
   // Find all Mermaid diagrams
   const mermaidWrappers = clonedContent.querySelectorAll('.mermaid-wrapper');

@@ -25,6 +25,8 @@ import { MarkdownParagraph } from '../../webview/extensions/markdownParagraph';
 import { BlankLinePreservation } from '../../webview/extensions/blankLinePreservation';
 import { installBlankLineLexerNormalizer } from '../../webview/utils/markedLexerNormalizer';
 import { getEditorMarkdownForSync } from '../../webview/utils/markdownSerialization';
+import { htmlToMarkdown } from '../../webview/utils/pasteHandler';
+import { collectExportContent } from '../../webview/utils/exportContent';
 
 function createEditor(): Editor {
   const element = document.createElement('div');
@@ -381,6 +383,60 @@ describe('detailsSection node view interaction', () => {
 
     const { $from } = editor.state.selection;
     expect($from.parent.type.name).toBe('detailsSummary');
+
+    editor.destroy();
+  });
+});
+
+describe('detailsSection boundaries (paste and export)', () => {
+  it('pasted HTML keeps the details structure through turndown', () => {
+    const html =
+      '<h2>Intro</h2><details><summary>Click me</summary><p>Hidden paragraph.</p></details>';
+
+    const markdown = htmlToMarkdown(html);
+    expect(markdown).toContain('<details');
+    expect(markdown).toContain('<summary>Click me</summary>');
+    expect(markdown).toContain('</details>');
+
+    // And the kept HTML parses into a real collapsible section on insert.
+    const editor = createEditor();
+    editor.commands.setContent(markdown, { contentType: 'markdown' } as never);
+    const section = (editor.getJSON().content || []).find(node => node.type === 'detailsSection');
+    expect(section).toBeDefined();
+    expect(section?.content?.[0]?.type).toBe('detailsSummary');
+    editor.destroy();
+  });
+
+  it('HTML export emits native <details>/<summary> instead of NodeView markup', async () => {
+    const editor = createEditor();
+    editor.commands.setContent(
+      ['<details open>', '<summary>Exported</summary>', '', 'Body.', '', '</details>'].join('\n'),
+      { contentType: 'markdown' } as never
+    );
+
+    const { html } = await collectExportContent(editor);
+
+    expect(html).toContain('<details open');
+    expect(html).toContain('<summary');
+    expect(html).toContain('Exported');
+    expect(html).toContain('Body.');
+    expect(html).not.toContain('details-chevron');
+    expect(html).not.toContain('details-section');
+
+    editor.destroy();
+  });
+
+  it('a section collapsed in the editor exports without the open attribute', async () => {
+    const editor = createEditor();
+    editor.commands.setContent(
+      ['<details>', '<summary>Closed</summary>', '', 'Body.', '', '</details>'].join('\n'),
+      { contentType: 'markdown' } as never
+    );
+
+    const { html } = await collectExportContent(editor);
+
+    expect(html).toContain('<details');
+    expect(html).not.toContain('<details open');
 
     editor.destroy();
   });
