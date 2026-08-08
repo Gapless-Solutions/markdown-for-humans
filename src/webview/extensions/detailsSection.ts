@@ -12,7 +12,20 @@ import type {
   MarkdownToken,
   RenderContext,
 } from '@tiptap/core';
+import { Fragment } from '@tiptap/pm/model';
+import { TextSelection } from '@tiptap/pm/state';
 import { normalizeBlankLineGreedyTokens } from '../utils/markedLexerNormalizer';
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    detailsSection: {
+      /** Wrap the selected blocks in a collapsible section (or wrap the current block). */
+      insertDetailsSection: () => ReturnType;
+      /** Flip the persisted `open` (expanded-by-default) attribute of the section at the cursor. */
+      toggleDetailsOpen: () => ReturnType;
+    };
+  }
+}
 
 /**
  * Collapsible sections backed by the GitHub-flavored `<details>`/`<summary>`
@@ -287,6 +300,75 @@ export const DetailsSection = Node.create({
 
   renderHTML({ HTMLAttributes }) {
     return ['details', mergeAttributes(HTMLAttributes, { class: 'details-section' }), 0];
+  },
+
+  addCommands() {
+    return {
+      insertDetailsSection:
+        () =>
+        ({ state, dispatch }) => {
+          const { $from, $to } = state.selection;
+          const range = $from.blockRange($to);
+          if (!range) return false;
+
+          const nodes = state.schema.nodes;
+          const detailsSection = nodes.detailsSection;
+          const detailsSummary = nodes.detailsSummary;
+          const paragraph = nodes.paragraph;
+          if (!detailsSection || !detailsSummary || !paragraph) return false;
+
+          const body = state.doc.slice(range.start, range.end).content;
+          const bodyContent = body.childCount > 0 ? body : Fragment.from(paragraph.create());
+
+          let section;
+          try {
+            // New sections start expanded-by-default (`<details open>`): the
+            // author is actively writing the body, and can flip the default
+            // once the content is in place.
+            section = detailsSection.create(
+              { open: true },
+              Fragment.from(detailsSummary.create()).append(bodyContent)
+            );
+          } catch {
+            return false;
+          }
+
+          if (dispatch) {
+            const tr = state.tr;
+            try {
+              tr.replaceWith(range.start, range.end, section);
+            } catch {
+              return false;
+            }
+            // Cursor into the (empty) summary so the author types the title.
+            tr.setSelection(TextSelection.create(tr.doc, range.start + 2));
+            dispatch(tr.scrollIntoView());
+          }
+          return true;
+        },
+
+      toggleDetailsOpen:
+        () =>
+        ({ state, dispatch }) => {
+          const { $from } = state.selection;
+          for (let depth = $from.depth; depth > 0; depth--) {
+            const node = $from.node(depth);
+            if (node.type.name === 'detailsSection') {
+              if (dispatch) {
+                const pos = $from.before(depth);
+                dispatch(
+                  state.tr.setNodeMarkup(pos, undefined, {
+                    ...node.attrs,
+                    open: !node.attrs.open,
+                  })
+                );
+              }
+              return true;
+            }
+          }
+          return false;
+        },
+    };
   },
 
   addNodeView() {

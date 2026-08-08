@@ -283,6 +283,82 @@ describe('detailsSection node view interaction', () => {
     editor.destroy();
   });
 
+  it('insertDetailsSection wraps the current block and puts the cursor in the summary', () => {
+    const editor = mountEditor('Some text');
+    editor.commands.setTextSelection(3);
+
+    const applied = editor.commands.insertDetailsSection();
+    expect(applied).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe('detailsSummary');
+
+    expect(getEditorMarkdownForSync(editor)).toBe(
+      ['<details open>', '', 'Some text', '', '</details>'].join('\n')
+    );
+
+    editor.destroy();
+  });
+
+  it('insertDetailsSection wraps a multi-block selection', () => {
+    const editor = mountEditor('First block.\n\nSecond block.');
+    editor.commands.setTextSelection({ from: 2, to: editor.state.doc.content.size - 2 });
+
+    expect(editor.commands.insertDetailsSection()).toBe(true);
+
+    expect(getEditorMarkdownForSync(editor)).toBe(
+      ['<details open>', '', 'First block.', '', 'Second block.', '', '</details>'].join('\n')
+    );
+
+    editor.destroy();
+  });
+
+  it('typing a title after insert serializes as the summary', () => {
+    const editor = mountEditor('Body here.');
+    editor.commands.setTextSelection(3);
+    editor.commands.insertDetailsSection();
+    editor.commands.insertContent('My title');
+
+    expect(getEditorMarkdownForSync(editor)).toBe(
+      ['<details open>', '<summary>My title</summary>', '', 'Body here.', '', '</details>'].join(
+        '\n'
+      )
+    );
+
+    editor.destroy();
+  });
+
+  it('toggleDetailsOpen flips the persisted open attribute', () => {
+    const editor = mountEditor(DETAILS_MD);
+    // Put the cursor inside the section (summary text position).
+    const sectionPos = (() => {
+      let pos = -1;
+      editor.state.doc.descendants((node, nodePos) => {
+        if (pos === -1 && node.type.name === 'detailsSection') pos = nodePos;
+        return pos === -1;
+      });
+      return pos;
+    })();
+    editor.commands.setTextSelection(sectionPos + 2);
+
+    expect(editor.commands.toggleDetailsOpen()).toBe(true);
+    expect(getEditorMarkdownForSync(editor)).toBe(
+      DETAILS_MD.replace('<details>', '<details open>')
+    );
+
+    expect(editor.commands.toggleDetailsOpen()).toBe(true);
+    expect(getEditorMarkdownForSync(editor)).toBe(DETAILS_MD);
+
+    editor.destroy();
+  });
+
+  it('toggleDetailsOpen is a no-op outside a section', () => {
+    const editor = mountEditor('Plain paragraph.');
+    editor.commands.setTextSelection(3);
+
+    expect(editor.commands.toggleDetailsOpen()).toBe(false);
+
+    editor.destroy();
+  });
+
   it('moves the cursor out of a body being collapsed into the summary', () => {
     const editor = mountEditor(DETAILS_MD);
 

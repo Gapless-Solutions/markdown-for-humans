@@ -473,6 +473,26 @@ export function createFormattingToolbar(editor: Editor): HTMLElement {
     },
     {
       type: 'dropdown',
+      label: 'Section',
+      title: 'Collapsible section (<details>)',
+      icon: { name: 'fold', fallback: '▸' },
+      requiresFocus: true,
+      isActive: () => editor.isActive('detailsSection'),
+      items: [
+        {
+          label: ' Wrap in collapsible section',
+          icon: { name: 'fold', fallback: '▸' },
+          action: () => editor.chain().focus().insertDetailsSection().run(),
+        },
+        {
+          label: ' Toggle expanded by default',
+          icon: { name: 'unfold', fallback: '▾' },
+          action: () => editor.chain().focus().toggleDetailsOpen().run(),
+        },
+      ],
+    },
+    {
+      type: 'dropdown',
       label: 'Code block',
       title: 'Insert code block',
       icon: { name: 'code', fallback: '{}' },
