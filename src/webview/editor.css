@@ -756,52 +756,85 @@
 
      Chevron toggles VIEW state only (never dirties the document).
      Collapsed sections hide every content block except the summary row.
+     Design language: summary is a tinted header band with a rotating
+     codicon chevron; the body sits in a quiet card below it.
      ============================================ */
 
   .markdown-editor .details-section {
     position: relative;
-    margin: 1em 0;
-    padding: 8px 12px 8px 30px;
+    margin: 1.1em 0;
     border: 1px solid var(--md-border);
-    border-radius: 6px;
+    border-radius: 8px;
+    background-color: rgba(128, 128, 128, 0.04);
+    transition: border-color 0.15s ease;
+  }
+
+  .markdown-editor .details-section:hover {
+    border-color: rgba(128, 128, 128, 0.45);
   }
 
   .markdown-editor .details-chevron {
     position: absolute;
-    top: 9px;
-    left: 8px;
-    width: 16px;
-    height: 16px;
+    top: 7px;
+    left: 9px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 0;
     border: none;
+    border-radius: 4px;
     background: transparent;
     color: var(--md-foreground);
-    opacity: 0.6;
+    opacity: 0.55;
     cursor: pointer;
+    font-size: 14px;
     line-height: 1;
-    font-size: 12px;
     user-select: none;
+    transition:
+      transform 0.18s ease,
+      opacity 0.12s ease,
+      background-color 0.12s ease;
   }
 
-  .markdown-editor .details-chevron::before {
-    content: '▾';
-    display: inline-block;
+  /* Rotate the chevron-right glyph downward when expanded. */
+  .markdown-editor .details-section:not(.details-collapsed) .details-chevron {
+    transform: rotate(90deg);
   }
 
-  .markdown-editor .details-section.details-collapsed .details-chevron::before {
-    content: '▸';
+  .markdown-editor .details-section:hover .details-chevron {
+    opacity: 0.85;
   }
 
   .markdown-editor .details-chevron:hover {
     opacity: 1;
+    background-color: rgba(128, 128, 128, 0.22);
   }
 
+  /* Summary = header band. Text stays editable (text cursor). */
   .markdown-editor .details-summary {
     display: block;
-    font-weight: 600;
     margin: 0;
+    padding: 7px 14px 7px 38px;
+    min-height: 22px;
+    font-weight: 600;
     cursor: text;
     list-style: none; /* suppress the native <summary> marker */
+    background-color: rgba(128, 128, 128, 0.09);
+    border-radius: 7px; /* collapsed: the band IS the whole card */
+    transition: background-color 0.12s ease;
+  }
+
+  .markdown-editor .details-section:hover .details-content > .details-summary {
+    background-color: rgba(128, 128, 128, 0.13);
+  }
+
+  /* Expanded: band squares off at the bottom and separates from the body. */
+  .markdown-editor .details-section:not(.details-collapsed) .details-content > .details-summary {
+    border-radius: 7px 7px 0 0;
+    border-bottom: 1px solid var(--md-border);
+    margin-bottom: 0.75em;
   }
 
   .markdown-editor .details-summary::marker,
@@ -810,8 +843,34 @@
     display: none;
   }
 
+  /* Body blocks get card padding; hidden entirely when collapsed. */
+  .markdown-editor .details-content > *:not(.details-summary) {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+
+  .markdown-editor .details-section:not(.details-collapsed) {
+    padding-bottom: 0.65em;
+  }
+
   .markdown-editor .details-collapsed .details-content > *:not(.details-summary) {
     display: none;
+  }
+
+  /* Dark / high-contrast: lift the tints instead of darkening them. */
+  .vscode-dark .markdown-editor .details-section,
+  .vscode-high-contrast .markdown-editor .details-section {
+    background-color: rgba(255, 255, 255, 0.03);
+  }
+
+  .vscode-dark .markdown-editor .details-summary,
+  .vscode-high-contrast .markdown-editor .details-summary {
+    background-color: rgba(255, 255, 255, 0.07);
+  }
+
+  .vscode-dark .markdown-editor .details-section:hover .details-content > .details-summary,
+  .vscode-high-contrast .markdown-editor .details-section:hover .details-content > .details-summary {
+    background-color: rgba(255, 255, 255, 0.1);
   }
 
   /* ============================================
