@@ -100,12 +100,11 @@ function lexSummaryInline(src: string, lex: LexFn): RawToken[] {
 }
 
 /**
- * Split a balanced `<details>…</details>` raw string into its parts and lex
- * the body (and any trailing content) as markdown. Returns null when the raw
- * text has no balanced details block, so callers can fall back to marked's
- * own tokens.
+ * Parse a details block that lives entirely inside ONE html token. Flat
+ * text scanning is safe here: inside a raw HTML block there are no markdown
+ * code spans, so a literal `</details>` genuinely closes the element.
  */
-function parseDetailsRaw(raw: string, lex: LexFn): DetailsTokenInfo | null {
+function parseSingleTokenDetails(raw: string, lex: LexFn): DetailsTokenInfo | null {
   const scannable = blankComments(raw);
   const openMatch = /<details\b([^>]*)>/i.exec(scannable);
   if (!openMatch) return null;
@@ -154,13 +153,95 @@ function parseDetailsRaw(raw: string, lex: LexFn): DetailsTokenInfo | null {
 }
 
 /**
+ * Extract a leading `<summary>…</summary>` from a raw fragment. On success,
+ * assigns the summary's inline tokens via `onSummary` and returns the
+ * remainder of the fragment; returns null when no leading summary exists.
+ */
+function extractLeadingSummary(
+  source: string,
+  lex: LexFn,
+  onSummary: (tokens: RawToken[]) => void
+): string | null {
+  const scan = blankComments(source);
+  const summaryOpen = SUMMARY_OPEN.exec(scan);
+  if (!summaryOpen) return null;
+  const summaryClose = SUMMARY_CLOSE.exec(scan);
+  if (!summaryClose || summaryClose.index < summaryOpen[0].length) return null;
+  onSummary(lexSummaryInline(source.slice(summaryOpen[0].length, summaryClose.index).trim(), lex));
+  return source.slice(summaryClose.index + summaryClose[0].length);
+}
+
+/**
+ * Build the parse pieces of a details block whose token run marked split at
+ * blank lines. Works on the TOKEN STRUCTURE, never on the re-joined raw
+ * text: the middle tokens are already-lexed markdown that is reused as the
+ * body verbatim, so a literal `</details>` inside a paragraph's inline code
+ * or a fenced code block can never be mistaken for the closing tag.
+ */
+function buildSplitRunInfo(
+  run: RawToken[],
+  closeStart: number,
+  closeEnd: number,
+  lex: LexFn
+): DetailsTokenInfo | null {
+  const first = tokenRaw(run[0]);
+  const openMatch = /<details\b([^>]*)>/i.exec(blankComments(first));
+  if (!openMatch) return null;
+
+  const open = /(?:^|\s)open(?:\s|=|$)/i.test(openMatch[1] ?? '');
+  let rest = first.slice(openMatch.index + openMatch[0].length);
+  let middle = run.slice(1, -1);
+
+  let summaryTokens: RawToken[] | null = null;
+  const setSummary = (tokens: RawToken[]) => {
+    summaryTokens = tokens;
+  };
+
+  const afterSummary = extractLeadingSummary(rest, lex, setSummary);
+  if (afterSummary !== null) {
+    rest = afterSummary;
+  } else if (rest.trim() === '') {
+    // A blank line between <details> and <summary> puts the summary at the
+    // start of the NEXT html fragment.
+    let k = 0;
+    while (k < middle.length && middle[k]?.type === 'space') k++;
+    const candidate = middle[k];
+    if (candidate && candidate.type === 'html') {
+      const leftover = extractLeadingSummary(tokenRaw(candidate), lex, setSummary);
+      if (leftover !== null) {
+        rest = leftover;
+        middle = middle.slice(k + 1);
+      }
+    }
+  }
+
+  const closing = tokenRaw(run[run.length - 1]);
+  const closePrefix = closing.slice(0, closeStart).trim();
+  const trailingRaw = closing.slice(closeEnd).trim();
+
+  const bodyTokens: RawToken[] = [];
+  const restTrimmed = rest.trim();
+  if (restTrimmed) bodyTokens.push(...lex(`${restTrimmed}\n`));
+  bodyTokens.push(...normalizeBlankLineGreedyTokens(mergeDetailsBlocks(middle, lex)));
+  if (closePrefix) bodyTokens.push(...lex(`${closePrefix}\n`));
+
+  return {
+    open,
+    summaryTokens,
+    bodyTokens,
+    trailingTokens: trailingRaw ? lex(`${trailingRaw}\n`) : [],
+  };
+}
+
+/**
  * Re-join the token run of a `<details>` block that marked split at blank
  * lines into a single tagged `html` token.
  *
- * Only `html` tokens are scanned for details tags, so a literal `</details>`
- * inside a fenced code block in the body cannot end the region. If the block
- * never closes, the original tokens are left untouched — this pass can never
- * make a document worse than marked's own output.
+ * Only `html` tokens are scanned for details tags — both when finding the
+ * closing tag and when building the body — so a literal `</details>` inside
+ * a paragraph's inline code or a fenced code block cannot end the region.
+ * If the block never closes, the original tokens are left untouched — this
+ * pass can never make a document worse than marked's own output.
  */
 export function mergeDetailsBlocks(tokens: RawToken[], lex: LexFn): RawToken[] {
   const out: RawToken[] = [];
@@ -175,18 +256,20 @@ export function mergeDetailsBlocks(tokens: RawToken[], lex: LexFn): RawToken[] {
 
     let depth = 0;
     let end = -1;
-    for (let j = i; j < tokens.length; j++) {
+    let closeStart = -1;
+    let closeEnd = -1;
+    for (let j = i; j < tokens.length && end === -1; j++) {
       const candidate = tokens[j];
-      if (candidate && candidate.type === 'html') {
-        const scannable = blankComments(tokenRaw(candidate));
-        DETAILS_TAG.lastIndex = 0;
-        let tagMatch: RegExpExecArray | null;
-        while ((tagMatch = DETAILS_TAG.exec(scannable)) !== null) {
-          depth += tagMatch[1] === '/' ? -1 : 1;
-          if (depth === 0) break;
-        }
+      if (!candidate || candidate.type !== 'html') continue;
+      const scannable = blankComments(tokenRaw(candidate));
+      DETAILS_TAG.lastIndex = 0;
+      let tagMatch: RegExpExecArray | null;
+      while ((tagMatch = DETAILS_TAG.exec(scannable)) !== null) {
+        depth += tagMatch[1] === '/' ? -1 : 1;
         if (depth === 0) {
           end = j;
+          closeStart = tagMatch.index;
+          closeEnd = tagMatch.index + tagMatch[0].length;
           break;
         }
       }
@@ -197,11 +280,12 @@ export function mergeDetailsBlocks(tokens: RawToken[], lex: LexFn): RawToken[] {
       continue;
     }
 
-    const combined = tokens
-      .slice(i, end + 1)
-      .map(tokenRaw)
-      .join('');
-    const info = parseDetailsRaw(combined, lex);
+    const run = tokens.slice(i, end + 1);
+    const combined = run.map(tokenRaw).join('');
+    const info =
+      end === i
+        ? parseSingleTokenDetails(combined, lex)
+        : buildSplitRunInfo(run, closeStart, closeEnd, lex);
     if (!info) {
       out.push(token);
       continue;
@@ -384,7 +468,8 @@ export const DetailsSection = Node.create({
 
       const chevron = document.createElement('button');
       chevron.type = 'button';
-      chevron.className = 'details-chevron';
+      // Codicon glyph; expansion is shown by rotating the icon via CSS.
+      chevron.className = 'details-chevron codicon codicon-chevron-right';
       chevron.contentEditable = 'false';
       chevron.tabIndex = -1;
       chevron.setAttribute('aria-label', 'Toggle section');

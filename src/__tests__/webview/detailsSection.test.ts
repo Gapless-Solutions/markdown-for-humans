@@ -217,6 +217,56 @@ describe('detailsSection markdown round-trip', () => {
 
     expect(roundTrip(markdown)).toBe(markdown);
   });
+
+  it('is not fooled by a literal </details> in inline code', () => {
+    const markdown = [
+      '<details>',
+      '<summary>Inline code test</summary>',
+      '',
+      'A literal `</details>` in inline code must not end the section.',
+      '',
+      '</details>',
+      '',
+      'After the section.',
+    ].join('\n');
+
+    expect(roundTrip(markdown)).toBe(markdown);
+  });
+
+  it('is not fooled by details tags inside a fenced code block', () => {
+    const markdown = [
+      '<details>',
+      '<summary>Fence test</summary>',
+      '',
+      '```html',
+      '<details>',
+      '  <summary>Sample</summary>',
+      '</details>',
+      '```',
+      '',
+      '</details>',
+    ].join('\n');
+
+    expect(roundTrip(markdown)).toBe(markdown);
+  });
+
+  it('finds a summary separated from <details> by a blank line', () => {
+    const markdown = [
+      '<details>',
+      '',
+      '<summary>Late summary</summary>',
+      '',
+      'Body.',
+      '',
+      '</details>',
+    ].join('\n');
+
+    const serialized = roundTrip(markdown);
+    expect(serialized).toContain('<summary>Late summary</summary>');
+    expect(serialized.match(/<details>/g)).toHaveLength(1);
+    expect(serialized.match(/<\/details>/g)).toHaveLength(1);
+    expect(serialized).toContain('Body.');
+  });
 });
 
 describe('detailsSection node view interaction', () => {
