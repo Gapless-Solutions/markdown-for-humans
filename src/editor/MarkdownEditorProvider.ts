@@ -881,6 +881,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           '@ext:concretio.markdown-for-humans'
         );
         break;
+      case 'navigateHistory':
+        // Mouse back/forward forwarded from the webview (see mouseNavHandler
+        // in editor.ts — the webview swallows these buttons otherwise).
+        void vscode.commands.executeCommand(
+          message.direction === 'forward'
+            ? 'workbench.action.navigateForward'
+            : 'workbench.action.navigateBack'
+        );
+        break;
       case 'exportDocument':
         this.handleExportDocument(message, document);
         break;
