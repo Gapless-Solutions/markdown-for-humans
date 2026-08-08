@@ -750,7 +750,70 @@
   .vscode-high-contrast .github-alert-caution .github-alert-label {
     color: #f85149;
   }
-  
+
+  /* ============================================
+     Collapsible <details> sections
+
+     Chevron toggles VIEW state only (never dirties the document).
+     Collapsed sections hide every content block except the summary row.
+     ============================================ */
+
+  .markdown-editor .details-section {
+    position: relative;
+    margin: 1em 0;
+    padding: 8px 12px 8px 30px;
+    border: 1px solid var(--md-border);
+    border-radius: 6px;
+  }
+
+  .markdown-editor .details-chevron {
+    position: absolute;
+    top: 9px;
+    left: 8px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--md-foreground);
+    opacity: 0.6;
+    cursor: pointer;
+    line-height: 1;
+    font-size: 12px;
+    user-select: none;
+  }
+
+  .markdown-editor .details-chevron::before {
+    content: '▾';
+    display: inline-block;
+  }
+
+  .markdown-editor .details-section.details-collapsed .details-chevron::before {
+    content: '▸';
+  }
+
+  .markdown-editor .details-chevron:hover {
+    opacity: 1;
+  }
+
+  .markdown-editor .details-summary {
+    display: block;
+    font-weight: 600;
+    margin: 0;
+    cursor: text;
+    list-style: none; /* suppress the native <summary> marker */
+  }
+
+  .markdown-editor .details-summary::marker,
+  .markdown-editor .details-summary::-webkit-details-marker {
+    content: '';
+    display: none;
+  }
+
+  .markdown-editor .details-collapsed .details-content > *:not(.details-summary) {
+    display: none;
+  }
+
   /* ============================================
      Horizontal Rule
      ============================================ */

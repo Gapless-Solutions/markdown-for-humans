@@ -289,6 +289,85 @@ export const DetailsSection = Node.create({
     return ['details', mergeAttributes(HTMLAttributes, { class: 'details-section' }), 0];
   },
 
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      // Expanded/collapsed is VIEW state: toggling must never dirty the
+      // document. The `open` attribute only sets the initial state (and is
+      // followed when changed through the explicit default-open control).
+      let currentOpen = Boolean(node.attrs.open);
+      let expanded = currentOpen;
+
+      const container = document.createElement('div');
+      container.className = 'details-section';
+
+      const chevron = document.createElement('button');
+      chevron.type = 'button';
+      chevron.className = 'details-chevron';
+      chevron.contentEditable = 'false';
+      chevron.tabIndex = -1;
+      chevron.setAttribute('aria-label', 'Toggle section');
+
+      const content = document.createElement('div');
+      content.className = 'details-content';
+
+      const applyState = () => {
+        container.classList.toggle('details-collapsed', !expanded);
+        chevron.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      };
+      applyState();
+
+      // Keep the selection where it is; a chevron click must not steal focus
+      // from the text the user was editing.
+      chevron.addEventListener('mousedown', event => event.preventDefault());
+      chevron.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        expanded = !expanded;
+        applyState();
+
+        // If the cursor was inside the now-hidden body, move it to the
+        // summary so typing never lands in invisible content.
+        if (!expanded && typeof getPos === 'function') {
+          const pos = getPos();
+          const sectionNode = typeof pos === 'number' ? editor.state.doc.nodeAt(pos) : null;
+          if (sectionNode && typeof pos === 'number') {
+            const { from } = editor.state.selection;
+            const summarySize = sectionNode.firstChild ? sectionNode.firstChild.nodeSize : 0;
+            const bodyStart = pos + 1 + summarySize;
+            const sectionEnd = pos + sectionNode.nodeSize;
+            if (from >= bodyStart && from < sectionEnd) {
+              editor.commands.setTextSelection(pos + 2);
+            }
+          }
+        }
+      });
+
+      container.appendChild(chevron);
+      container.appendChild(content);
+
+      return {
+        dom: container,
+        contentDOM: content,
+        stopEvent: event =>
+          event.target === chevron || chevron.contains(event.target as globalThis.Node),
+        ignoreMutation: mutation =>
+          !content.contains(mutation.target) && mutation.target !== content,
+        update: updatedNode => {
+          if (updatedNode.type.name !== 'detailsSection') {
+            return false;
+          }
+          const nextOpen = Boolean(updatedNode.attrs.open);
+          if (nextOpen !== currentOpen) {
+            currentOpen = nextOpen;
+            expanded = nextOpen;
+            applyState();
+          }
+          return true;
+        },
+      };
+    };
+  },
+
   markdownTokenName: 'html',
 
   parseMarkdown: ((token: MarkdownToken, helpers: MarkdownParseHelpers) => {

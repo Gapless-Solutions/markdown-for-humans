@@ -216,3 +216,96 @@ describe('detailsSection markdown round-trip', () => {
     expect(roundTrip(markdown)).toBe(markdown);
   });
 });
+
+describe('detailsSection node view interaction', () => {
+  const DETAILS_MD = [
+    '<details>',
+    '<summary>Title</summary>',
+    '',
+    'Body content.',
+    '',
+    '</details>',
+  ].join('\n');
+
+  function mountEditor(markdown: string): Editor {
+    const editor = createEditor();
+    editor.commands.setContent(markdown, { contentType: 'markdown' } as never);
+    return editor;
+  }
+
+  function clickChevron(editor: Editor): HTMLElement {
+    const chevron = editor.view.dom.querySelector('.details-chevron') as HTMLElement;
+    expect(chevron).not.toBeNull();
+    chevron.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return chevron;
+  }
+
+  function sectionElement(editor: Editor): HTMLElement {
+    return editor.view.dom.querySelector('.details-section') as HTMLElement;
+  }
+
+  it('renders collapsed by default', () => {
+    const editor = mountEditor(DETAILS_MD);
+    const section = sectionElement(editor);
+
+    expect(section).not.toBeNull();
+    expect(section.classList.contains('details-collapsed')).toBe(true);
+    expect(section.querySelector('.details-chevron')?.getAttribute('aria-expanded')).toBe('false');
+
+    editor.destroy();
+  });
+
+  it('renders expanded when the source has <details open>', () => {
+    const editor = mountEditor(DETAILS_MD.replace('<details>', '<details open>'));
+    const section = sectionElement(editor);
+
+    expect(section.classList.contains('details-collapsed')).toBe(false);
+    expect(section.querySelector('.details-chevron')?.getAttribute('aria-expanded')).toBe('true');
+
+    editor.destroy();
+  });
+
+  it('chevron click toggles the view without dirtying the document', () => {
+    const editor = mountEditor(DETAILS_MD);
+    const docBefore = editor.state.doc;
+    const markdownBefore = getEditorMarkdownForSync(editor);
+
+    clickChevron(editor);
+    expect(sectionElement(editor).classList.contains('details-collapsed')).toBe(false);
+
+    clickChevron(editor);
+    expect(sectionElement(editor).classList.contains('details-collapsed')).toBe(true);
+
+    // View-state only: no transaction touched the document.
+    expect(editor.state.doc.eq(docBefore)).toBe(true);
+    expect(getEditorMarkdownForSync(editor)).toBe(markdownBefore);
+
+    editor.destroy();
+  });
+
+  it('moves the cursor out of a body being collapsed into the summary', () => {
+    const editor = mountEditor(DETAILS_MD);
+
+    clickChevron(editor); // expand first
+    // Place the cursor inside the body paragraph ("Body content.").
+    const bodyPos = (() => {
+      let pos = -1;
+      editor.state.doc.descendants((node, nodePos) => {
+        if (pos === -1 && node.type.name === 'paragraph' && node.textContent === 'Body content.') {
+          pos = nodePos + 1;
+        }
+        return pos === -1;
+      });
+      return pos;
+    })();
+    expect(bodyPos).toBeGreaterThan(-1);
+    editor.commands.setTextSelection(bodyPos);
+
+    clickChevron(editor); // collapse with cursor in body
+
+    const { $from } = editor.state.selection;
+    expect($from.parent.type.name).toBe('detailsSummary');
+
+    editor.destroy();
+  });
+});
