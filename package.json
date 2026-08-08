@@ -280,7 +280,7 @@
             "none",
             "disabled"
           ],
-          "default": "alt",
+          "default": "ctrl",
           "enumDescriptions": [
             "Alt+double-click jumps to the source (double-click alone keeps selecting words)",
             "Ctrl+double-click (Cmd on macOS) jumps to the source",

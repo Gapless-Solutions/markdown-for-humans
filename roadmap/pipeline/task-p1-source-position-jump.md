@@ -142,7 +142,7 @@ commands), `package.json` (commands, context-menu contribution).
 - **What:** `findBlockPosForLine` added to `aiContextReference.ts` (inverse of
   the selection→line mapping, gap-snapping + end-clamping).
   `sourceJump.ts` holds the gesture policy: modifier is configurable via
-  `markdownForHumans.sourceJump.modifier` (alt default / ctrl / shift / none /
+  `markdownForHumans.sourceJump.modifier` (ctrl default / alt / shift / none /
   disabled), exact-match so unrelated chords never fire. Webview posts
   `openSourceView` with a `line`; host opens the split with the cursor there.
   Reverse: `markdownForHumans.openRenderedAtCursor` (command + editor context
