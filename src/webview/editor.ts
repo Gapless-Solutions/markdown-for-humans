@@ -26,6 +26,11 @@ import { CodeBlockWithCopy } from './extensions/codeBlockWithCopy';
 import { SpaceFriendlyImagePaths } from './extensions/spaceFriendlyImagePaths';
 import { TabIndentation } from './extensions/tabIndentation';
 import { GitHubAlerts } from './extensions/githubAlerts';
+import {
+  DetailsSection,
+  DetailsSummary,
+  installDetailsBlockMerger,
+} from './extensions/detailsSection';
 import { ImageEnterSpacing } from './extensions/imageEnterSpacing';
 import { MarkdownParagraph } from './extensions/markdownParagraph';
 import { BlankLinePreservation } from './extensions/blankLinePreservation';
@@ -591,6 +596,9 @@ function initializeEditor(initialContent: string) {
         SpaceFriendlyImagePaths,
         // GitHubAlerts must be before StarterKit to intercept alert blockquotes
         GitHubAlerts,
+        // Collapsible <details>/<summary> sections (GitHub-flavored HTML idiom)
+        DetailsSection,
+        DetailsSummary,
         StarterKit.configure({
           heading: {
             levels: [1, 2, 3, 4, 5, 6],
@@ -754,6 +762,10 @@ function initializeEditor(initialContent: string) {
       const markedInstance =
         markdownStorage.markdown?.instance ?? markdownStorage.storage?.markdown?.instance;
       if (markedInstance) {
+        // The details merger must be installed FIRST: it needs marked's raw
+        // token stream, before the blank-line normalizer's scaffolding filter
+        // drops the bare `</details>` fragments it uses to find block ends.
+        installDetailsBlockMerger(markedInstance);
         installBlankLineLexerNormalizer(markedInstance);
       }
     } catch (error) {
