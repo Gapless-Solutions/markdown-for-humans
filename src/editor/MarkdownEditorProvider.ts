@@ -13,7 +13,7 @@ import * as https from 'https';
 import * as dns from 'dns';
 import { isIP } from 'net';
 import { outlineViewProvider, type OutlineEntry } from '../features/outlineView';
-import { setActiveWebviewPanel, getActiveWebviewPanel } from '../activeWebview';
+import { setActiveWebviewPanel, getActiveWebviewPanel, takePendingReveal } from '../activeWebview';
 import { buildResizeBackupLocation, resolveBackupPathWithCollisionDetection } from './imageBackups';
 import { hasSameBlankLineLayout, isMarkdownStructurallyEquivalent } from './markdownAstEquivalence';
 import { applyBlankLinePolicy, type BlankLineMode } from '../shared/blankLinePolicy';
@@ -520,7 +520,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         e.affectsConfiguration('markdownForHumans.paragraph.spacingAfter') ||
         e.affectsConfiguration('markdownForHumans.zoom') ||
         e.affectsConfiguration('markdownForHumans.enableMath') ||
-        e.affectsConfiguration('markdownForHumans.formattingShortcuts.enabled')
+        e.affectsConfiguration('markdownForHumans.formattingShortcuts.enabled') ||
+        e.affectsConfiguration('markdownForHumans.sourceJump.modifier')
       ) {
         const config = vscode.workspace.getConfiguration();
         const skipWarning = config.get<boolean>('markdownForHumans.imageResize.skipWarning', false);
@@ -579,6 +580,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           formattingShortcutsEnabled,
           blankLineMode,
           enableMath: enableMath,
+          sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'alt'),
         });
       }
     });
@@ -701,6 +703,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       formattingShortcutsEnabled,
       blankLineMode,
       enableMath: enableMath,
+      sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'alt'),
     });
   }
 
@@ -804,7 +807,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           formattingShortcutsEnabled,
           blankLineMode,
           enableMath: enableMath,
+          sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'alt'),
         });
+        // A "reveal at line" queued before this webview finished loading
+        // (Open in Rendered View at Cursor on a not-yet-open document) can be
+        // delivered now that the editor is initialized.
+        const pendingReveal = takePendingReveal(document.uri.toString());
+        if (pendingReveal !== undefined) {
+          webview.postMessage({ type: 'revealLine', line: pendingReveal });
+        }
         break;
       }
       case 'outlineUpdated': {
@@ -826,15 +837,27 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       case 'resolveImageUri':
         this.handleResolveImageUri(message, document, webview);
         break;
-      case 'openSourceView':
-        // Open the source file in a split view with VS Code's default text editor
-        vscode.commands.executeCommand(
-          'vscode.openWith',
-          document.uri,
-          'default',
-          vscode.ViewColumn.Beside
-        );
+      case 'openSourceView': {
+        // Open the source file in a split view with VS Code's default text
+        // editor. When the webview supplies a line (source position jump),
+        // place the cursor there and reveal it centered.
+        const jumpLine = message.line as number | undefined;
+        if (typeof jumpLine === 'number' && jumpLine >= 1) {
+          const position = new vscode.Position(jumpLine - 1, 0);
+          void vscode.window.showTextDocument(document, {
+            viewColumn: vscode.ViewColumn.Beside,
+            selection: new vscode.Range(position, position),
+          });
+        } else {
+          vscode.commands.executeCommand(
+            'vscode.openWith',
+            document.uri,
+            'default',
+            vscode.ViewColumn.Beside
+          );
+        }
         break;
+      }
       case 'openExtensionSettings':
         vscode.commands.executeCommand(
           'workbench.action.openSettings',

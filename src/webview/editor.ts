@@ -52,7 +52,17 @@ import { showSearchOverlay } from './features/searchOverlay';
 import { showLinkDialog } from './features/linkDialog';
 import { processPasteContent, parseFencedCode } from './utils/pasteHandler';
 import { copySelectionAsMarkdown } from './utils/copyMarkdown';
-import { copyAiContextReference, type SelectionBlockRange } from './utils/aiContextReference';
+import {
+  copyAiContextReference,
+  computeSelectionBlockRange,
+  findBlockPosForLine,
+  type SelectionBlockRange,
+} from './utils/aiContextReference';
+import {
+  matchesSourceJumpGesture,
+  normalizeSourceJumpModifier,
+  type SourceJumpModifier,
+} from './utils/sourceJump';
 import { shouldAutoLink } from './utils/linkValidation';
 import { buildOutlineFromEditor } from './utils/outline';
 import { scrollToHeading } from './utils/scrollToHeading';
@@ -256,6 +266,7 @@ let blankLineMode: BlankLineMode = 'strip';
 // editor stops intercepting Cmd/Ctrl+B/I/U so those chords reach VS Code's own
 // keybindings instead of toggling bold/italic/underline in-editor.
 let formattingShortcutsEnabled = true;
+let sourceJumpModifier: SourceJumpModifier = 'alt';
 
 // Pending document-dirty queries, keyed by requestId. The host replies with
 // `documentDirtyResponse`; we look up the resolver here.
@@ -322,6 +333,17 @@ async function insertAndEditMath(editorInstance: Editor, mode: 'inline' | 'block
       latex: result.latex,
     })
   );
+}
+
+/**
+ * Compute the saved-file line of the block at the current selection and ask
+ * the host to open the raw source split with the cursor on that line. Falls
+ * back to a top-of-file source view when the mapping fails.
+ */
+function postSourceJump(editorInstance: Editor): void {
+  const result = computeSelectionBlockRange(editorInstance, blankLineMode);
+  const line = result.ok ? result.range.startLine : undefined;
+  vscode.postMessage({ type: 'openSourceView', line });
 }
 
 async function runCopyAiContextRef(): Promise<void> {
@@ -1068,6 +1090,26 @@ function initializeEditor(initialContent: string) {
     // Add click handler to editor DOM
     editorInstance.view.dom.addEventListener('click', handleLinkClick);
 
+    // Modifier+double-click: jump to the raw source at this block's line.
+    // Plain double-click stays word selection; the modifier is configurable
+    // via markdownForHumans.sourceJump.modifier.
+    const handleSourceJumpDblClick = (e: MouseEvent) => {
+      if (!matchesSourceJumpGesture(e, sourceJumpModifier)) return;
+
+      // Interactive elements own their clicks (links, images, chevrons, ...).
+      const target = e.target as HTMLElement;
+      if (target.closest('a, img, button, .mermaid-wrapper, .katex')) return;
+
+      const coords = editorInstance.view.posAtCoords({ left: e.clientX, top: e.clientY });
+      if (!coords) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      editorInstance.commands.setTextSelection(coords.pos);
+      postSourceJump(editorInstance);
+    };
+    editorInstance.view.dom.addEventListener('dblclick', handleSourceJumpDblClick);
+
     // Also handle links added dynamically by listening to editor updates
     const updateLinkHandlers = () => {
       const links = editorInstance.view.dom.querySelectorAll('.markdown-link');
@@ -1090,6 +1132,7 @@ function initializeEditor(initialContent: string) {
       document.removeEventListener('click', documentClickHandler);
       document.removeEventListener('keydown', keydownHandler);
       editorInstance.view.dom.removeEventListener('click', handleLinkClick);
+      editorInstance.view.dom.removeEventListener('dblclick', handleSourceJumpDblClick);
       console.log('[MD4H] Editor destroyed, global listeners cleaned up');
     });
 
@@ -1636,6 +1679,22 @@ window.addEventListener('message', (event: MessageEvent) => {
         void runCopyAiContextRef();
         break;
       }
+      case 'triggerSourceJump': {
+        if (!editor) return;
+        postSourceJump(editor);
+        break;
+      }
+      case 'revealLine': {
+        if (!editor) return;
+        const line = message.line as number;
+        if (typeof line !== 'number' || line < 1) return;
+        const pos = findBlockPosForLine(editor, line, blankLineMode);
+        if (pos !== null) {
+          scrollToHeading(editor, pos);
+          editor.commands.setTextSelection(pos);
+        }
+        break;
+      }
       case 'navigateToHeading': {
         if (!editor) return;
         const pos = message.pos as number;
@@ -1961,6 +2020,9 @@ function applyEditorSettings(message: Record<string, any>) {
   }
   if (typeof message.formattingShortcutsEnabled === 'boolean') {
     formattingShortcutsEnabled = message.formattingShortcutsEnabled;
+  }
+  if (typeof message.sourceJumpModifier === 'string') {
+    sourceJumpModifier = normalizeSourceJumpModifier(message.sourceJumpModifier);
   }
 }
 

@@ -4,7 +4,7 @@
 
 - **Task name:** Source Position Jump
 - **Slug:** source-position-jump
-- **Status:** planned
+- **Status:** in-progress
 - **Created:** 2026-08-08
 - **Last updated:** 2026-08-08
 - **Shipped:** _(pending)_
@@ -127,27 +127,45 @@ commands), `package.json` (commands, context-menu contribution).
 
 ## 6. Work Breakdown
 
-- [ ] **Phase 1:** shared block↔line helper extracted from aiContextReference
-      (+ unit tests both directions)
-- [ ] **Phase 2:** rendered→source (Alt+dblclick + command + host handler)
-- [ ] **Phase 3:** source→rendered (command + context menu + revealLine)
-- [ ] **Testing:** Jest for mapping + message payloads; manual QA for gestures
+- [x] **Phase 1:** block↔line inverse (`findBlockPosForLine`) beside the
+      existing forward mapping (+ unit tests both directions)
+- [x] **Phase 2:** rendered→source (modifier+dblclick + command + host handler)
+- [x] **Phase 3:** source→rendered (command + context menu + revealLine)
+- [ ] **Testing:** Jest for mapping + gesture policy done; manual QA pending
 
 ---
 
 ## 7. Implementation Log
 
-_(To be filled during implementation)_
+### 2026-08-08 – Implemented (all phases)
+
+- **What:** `findBlockPosForLine` added to `aiContextReference.ts` (inverse of
+  the selection→line mapping, gap-snapping + end-clamping).
+  `sourceJump.ts` holds the gesture policy: modifier is configurable via
+  `markdownForHumans.sourceJump.modifier` (alt default / ctrl / shift / none /
+  disabled), exact-match so unrelated chords never fire. Webview posts
+  `openSourceView` with a `line`; host opens the split with the cursor there.
+  Reverse: `markdownForHumans.openRenderedAtCursor` (command + editor context
+  menu) queues a one-shot reveal consumed on the webview's `ready` handshake,
+  with a timeout fallback for already-open webviews; the webview handles
+  `revealLine` via the inverse mapping.
+- **Files:** `src/webview/utils/sourceJump.ts`,
+  `src/webview/utils/aiContextReference.ts`, `src/webview/editor.ts`,
+  `src/editor/MarkdownEditorProvider.ts`, `src/activeWebview.ts`,
+  `src/extension.ts`, `package.json`,
+  `src/__tests__/webview/sourceJump.test.ts`.
 
 ---
 
 ## 8. Decisions & Tradeoffs
 
-- **Alt+double-click, not plain double-click:** plain double-click is
-  word-selection in every editor, including this one; overriding it would break
-  text editing. Alt+dblclick keeps the gesture cheap without stealing a
-  fundamental one. (Raw-editor side can't hook double-click at all — VS Code
-  exposes no such event for text editors — hence command + context menu.)
+- **Alt+double-click by default, modifier configurable (owner decision
+  2026-08-08):** plain double-click is word-selection in every editor,
+  including this one; overriding it would break text editing. The
+  `sourceJump.modifier` setting offers `none` for users who accept that
+  tradeoff and `disabled` to turn the gesture off. (Raw-editor side can't hook
+  double-click at all — VS Code exposes no such event for text editors — hence
+  command + context menu.)
 - **Block-level accuracy:** the serialized file and the rendered view don't map
   1:1 below block level; block-start lines are predictable and always correct.
 

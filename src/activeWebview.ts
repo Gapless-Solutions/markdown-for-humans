@@ -33,3 +33,21 @@ export function getActiveWebviewPanel(): vscode.WebviewPanel | undefined {
 export function getActiveWebviewDocument(): vscode.TextDocument | undefined {
   return activeWebviewDocument;
 }
+
+/**
+ * One-shot "reveal this line once the rendered editor is up" queue, used by
+ * the Open in Rendered View at Cursor command. Keyed by document URI string.
+ * Consumed either by the provider's 'ready' handler (freshly opened webview)
+ * or by the command's own fallback for an already-open webview.
+ */
+const pendingReveals = new Map<string, number>();
+
+export function queuePendingReveal(uriKey: string, line: number): void {
+  pendingReveals.set(uriKey, line);
+}
+
+export function takePendingReveal(uriKey: string): number | undefined {
+  const line = pendingReveals.get(uriKey);
+  pendingReveals.delete(uriKey);
+  return line;
+}

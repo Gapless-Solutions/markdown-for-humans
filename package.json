@@ -116,6 +116,14 @@
       {
         "command": "markdownForHumans.toggleFormattingShortcuts",
         "title": "Markdown for Humans: Toggle Formatting Shortcuts (Cmd/Ctrl+B/I/U)"
+      },
+      {
+        "command": "markdownForHumans.openSourceAtCursor",
+        "title": "Markdown for Humans: Open Source at This Position"
+      },
+      {
+        "command": "markdownForHumans.openRenderedAtCursor",
+        "title": "Markdown for Humans: Open in Rendered View at Cursor"
       }
     ],
     "keybindings": [
@@ -146,6 +154,13 @@
         {
           "command": "markdownForHumans.openFile",
           "when": "resourceExtname == .md",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "markdownForHumans.openRenderedAtCursor",
+          "when": "editorLangId == markdown",
           "group": "navigation"
         }
       ],
@@ -254,6 +269,26 @@
           "type": "boolean",
           "default": true,
           "description": "When enabled, Cmd/Ctrl+B, +I, and +U toggle bold/italic/underline inside the editor. Disable this if you rely on VS Code keybindings that use the same chords (e.g. a sidebar toggle rebound to Cmd+B) and want them to keep working while a markdown file is open in this editor.",
+          "scope": "application"
+        },
+        "markdownForHumans.sourceJump.modifier": {
+          "type": "string",
+          "enum": [
+            "alt",
+            "ctrl",
+            "shift",
+            "none",
+            "disabled"
+          ],
+          "default": "alt",
+          "enumDescriptions": [
+            "Alt+double-click jumps to the source (double-click alone keeps selecting words)",
+            "Ctrl+double-click (Cmd on macOS) jumps to the source",
+            "Shift+double-click jumps to the source",
+            "Plain double-click jumps to the source (sacrifices double-click word selection)",
+            "No mouse gesture; only the command palette entry"
+          ],
+          "description": "Modifier key for the double-click gesture that opens the raw markdown source at the clicked block's line.",
           "scope": "application"
         }
       }

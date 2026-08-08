@@ -7,7 +7,7 @@
 import * as vscode from 'vscode';
 import { MarkdownEditorProvider } from './editor/MarkdownEditorProvider';
 import { WordCountFeature } from './features/wordCount';
-import { getActiveWebviewPanel } from './activeWebview';
+import { getActiveWebviewPanel, queuePendingReveal, takePendingReveal } from './activeWebview';
 import { outlineViewProvider } from './features/outlineView';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -140,6 +140,46 @@ export function activate(context: vscode.ExtensionContext) {
       if (panel) {
         panel.webview.postMessage({ type: 'triggerCopyAiContextRef' });
       }
+    })
+  );
+
+  // Source position jump: rendered view -> raw source at the current block.
+  // The webview owns the selection and the block->line math; the command is a
+  // thin trigger, same pattern as copyAiContextRef.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownForHumans.openSourceAtCursor', () => {
+      const panel = getActiveWebviewPanel();
+      if (panel) {
+        panel.webview.postMessage({ type: 'triggerSourceJump' });
+      }
+    })
+  );
+
+  // Source position jump, reverse direction: raw text editor -> rendered view
+  // scrolled to the block containing the cursor's line. The reveal is queued
+  // because a freshly opened webview can only act on it after its 'ready'
+  // handshake; for an already-open webview the timeout fallback delivers it.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('markdownForHumans.openRenderedAtCursor', async () => {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (!activeEditor || activeEditor.document.languageId !== 'markdown') {
+        return;
+      }
+      const line = activeEditor.selection.active.line + 1;
+      const uriKey = activeEditor.document.uri.toString();
+      queuePendingReveal(uriKey, line);
+      await vscode.commands.executeCommand(
+        'vscode.openWith',
+        activeEditor.document.uri,
+        'markdownForHumans.editor'
+      );
+      setTimeout(() => {
+        const pending = takePendingReveal(uriKey);
+        const panel = getActiveWebviewPanel();
+        if (pending !== undefined && panel) {
+          panel.webview.postMessage({ type: 'revealLine', line: pending });
+        }
+      }, 300);
     })
   );
 

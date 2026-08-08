@@ -324,6 +324,51 @@ export function getSelectionBlockRange(
 }
 
 /**
+ * Inverse of the selection→line mapping: find the ProseMirror position of the
+ * block whose saved-file line range contains `line`. A line in a blank-line
+ * gap snaps to the next block; lines past the end clamp to the last block.
+ * Returns null when the doc has no mappable content (same failure modes as
+ * `computeSelectionBlockRange`).
+ */
+export function findBlockPosForLine(
+  editor: Editor,
+  line: number,
+  blankLineMode: BlankLineMode = 'preserve'
+): number | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editorAny = editor as any;
+  const direct: MarkdownManager | undefined = editorAny.markdown;
+  const fromStorage: MarkdownManager | undefined = editorAny.storage?.markdown?.manager;
+  const markdownManager: MarkdownManager | undefined = direct ?? fromStorage;
+  const serialize = markdownManager?.serialize?.bind(markdownManager);
+  if (typeof serialize !== 'function' || typeof editor.getJSON !== 'function') return null;
+
+  const liveJson = editor.getJSON();
+  if (!Array.isArray(liveJson.content) || liveJson.content.length === 0) return null;
+
+  const allBlocks: BlockPos[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  editor.state.doc.content.forEach((node: any, offset: number) => {
+    allBlocks.push({ from: offset + 1, to: offset + 1 + node.nodeSize });
+  });
+  if (allBlocks.length !== liveJson.content.length) return null;
+
+  let ranges: BlockLineRange[];
+  try {
+    ranges = computeBlockLineRanges(liveJson.content, serialize, blankLineMode);
+  } catch {
+    return null;
+  }
+  if (ranges.length === 0) return null;
+
+  // Ranges are ascending: pick the first block whose range ends at/after the
+  // line (covers containment and gap-snapping), else clamp to the last.
+  const target = ranges.find(r => line <= r.endLine) ?? ranges[ranges.length - 1];
+  const block = allBlocks[target.jsonIdx];
+  return block ? block.from : null;
+}
+
+/**
  * High-level orchestration used by both the toolbar button and the keybinding:
  *   1. Compute the selection's block-rounded line range.
  *   2. Ask the extension host to save the document and return a workspace-relative

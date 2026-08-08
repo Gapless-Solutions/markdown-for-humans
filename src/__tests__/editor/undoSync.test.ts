@@ -212,6 +212,7 @@ describe('MarkdownEditorProvider undo/redo safety', () => {
       zoom: 100,
       enableMath: true,
       formattingShortcutsEnabled: true,
+      sourceJumpModifier: 'alt',
     });
   });
 
@@ -257,6 +258,7 @@ describe('MarkdownEditorProvider undo/redo safety', () => {
       zoom: 100,
       enableMath: true,
       formattingShortcutsEnabled: true,
+      sourceJumpModifier: 'alt',
     });
 
     getConfigurationSpy.mockRestore();
