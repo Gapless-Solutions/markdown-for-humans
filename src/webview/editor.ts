@@ -699,6 +699,10 @@ function initializeEditor(initialContent: string) {
             class: 'markdown-link',
           },
           shouldAutoLink,
+          // TipTap's XSS allowlist (http/https/mailto/…) rejects unknown
+          // schemes, silently disabling the editor's own protocol links —
+          // vscode://file/<path>:<line> is a first-class citizen here.
+          protocols: ['vscode', 'vscode-insiders'],
         }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (CustomImage as any).configure({
@@ -1004,10 +1008,25 @@ function initializeEditor(initialContent: string) {
       }
     };
 
+    // Mouse back/forward buttons: the webview swallows these before VS
+    // Code's keybinding layer (browserback/browserforward) can see them, so
+    // history navigation dies whenever focus is in the rendered view.
+    // Forward them to the host explicitly.
+    const mouseNavHandler = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      e.stopPropagation();
+      vscode.postMessage({
+        type: 'navigateHistory',
+        direction: e.button === 3 ? 'back' : 'forward',
+      });
+    };
+
     // Register handlers
     document.addEventListener('contextmenu', contextMenuHandler);
     document.addEventListener('click', documentClickHandler);
     document.addEventListener('keydown', keydownHandler);
+    document.addEventListener('mouseup', mouseNavHandler);
 
     // Add link click handler for navigation
     const handleLinkClick = (e: MouseEvent) => {
@@ -1132,6 +1151,7 @@ function initializeEditor(initialContent: string) {
       document.removeEventListener('contextmenu', contextMenuHandler);
       document.removeEventListener('click', documentClickHandler);
       document.removeEventListener('keydown', keydownHandler);
+      document.removeEventListener('mouseup', mouseNavHandler);
       editorInstance.view.dom.removeEventListener('click', handleLinkClick);
       editorInstance.view.dom.removeEventListener('dblclick', handleSourceJumpDblClick);
       console.log('[MD4H] Editor destroyed, global listeners cleaned up');
