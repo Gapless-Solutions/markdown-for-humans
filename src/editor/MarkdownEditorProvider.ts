@@ -13,7 +13,13 @@ import * as https from 'https';
 import * as dns from 'dns';
 import { isIP } from 'net';
 import { outlineViewProvider, type OutlineEntry } from '../features/outlineView';
-import { setActiveWebviewPanel, getActiveWebviewPanel, takePendingReveal } from '../activeWebview';
+import {
+  setActiveWebviewPanel,
+  getActiveWebviewPanel,
+  takePendingReveal,
+  openRenderedMarkdown,
+} from '../activeWebview';
+import { parseFileLinkHref, parseVsCodeFileUrl, type FileLinkTarget } from '../shared/linkTargets';
 import { buildResizeBackupLocation, resolveBackupPathWithCollisionDetection } from './imageBackups';
 import { hasSameBlankLineLayout, isMarkdownStructurallyEquivalent } from './markdownAstEquivalence';
 import { applyBlankLinePolicy, type BlankLineMode } from '../shared/blankLinePolicy';
@@ -580,7 +586,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           formattingShortcutsEnabled,
           blankLineMode,
           enableMath: enableMath,
-          sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'alt'),
+          sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'ctrl'),
         });
       }
     });
@@ -703,7 +709,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       formattingShortcutsEnabled,
       blankLineMode,
       enableMath: enableMath,
-      sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'alt'),
+      sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'ctrl'),
     });
   }
 
@@ -761,7 +767,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         break;
       }
       case 'ready': {
-        // Webview is ready, send initial content and settings
+        // A webview that just said 'ready' is EMPTY by definition — it must
+        // always receive content. The lastWebviewContent dedupe cache can
+        // still hold this document's current content when the webview was
+        // recreated (tab moved between editor groups, fast close/reopen where
+        // the old panel's dispose fires after the new resolve), and skipping
+        // the update then leaves the editor permanently blank.
+        this.lastWebviewContent.delete(document.uri.toString());
+        // Same reasoning for the recent-edit suppression window: an edit made
+        // by a webview instance that no longer exists must not mute the fresh
+        // instance's initial content.
+        this.pendingEdits.delete(document.uri.toString());
         this.updateWebview(document, webview);
         // Also send settings separately
         const config = vscode.workspace.getConfiguration();
@@ -807,14 +823,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           formattingShortcutsEnabled,
           blankLineMode,
           enableMath: enableMath,
-          sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'alt'),
+          sourceJumpModifier: config.get<string>('markdownForHumans.sourceJump.modifier', 'ctrl'),
         });
-        // A "reveal at line" queued before this webview finished loading
-        // (Open in Rendered View at Cursor on a not-yet-open document) can be
-        // delivered now that the editor is initialized.
+        // A reveal queued before this webview finished loading (Open in
+        // Rendered View at Cursor, or a link with a #L42/:42/#heading target
+        // on a not-yet-open document) can be delivered now that the editor
+        // is initialized.
         const pendingReveal = takePendingReveal(document.uri.toString());
         if (pendingReveal !== undefined) {
-          webview.postMessage({ type: 'revealLine', line: pendingReveal });
+          webview.postMessage({ type: 'revealTarget', ...pendingReveal });
         }
         break;
       }
@@ -2961,10 +2978,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       }
 
       // Enforce the scheme allowlist (http/https/mailto plus the editor's
-      // own vscode: protocol — openExternal handles vscode://file/<path>:<line>
-      // natively by opening the file at that line in the running window).
+      // own vscode: protocol).
       if (!isAllowedExternalUrl(url)) {
         console.warn('[MD4H] Blocked external URL with disallowed scheme:', url);
+        return;
+      }
+
+      // vscode://file/<path>(:line(:column)) is handled in-process instead of
+      // through openExternal: the OS protocol round-trip is unreliable for
+      // the line suffix, while opening directly is exact.
+      const fileTarget = parseVsCodeFileUrl(url);
+      if (fileTarget) {
+        console.warn('[MD4H] Opening vscode file link in editor:', fileTarget.path);
+        await this.openFileTargetInEditor(vscode.Uri.file(fileTarget.path), fileTarget);
         return;
       }
 
@@ -3067,11 +3093,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     document: vscode.TextDocument
   ): Promise<void> {
     try {
-      const filePath = (message.path as string) || '';
-      console.warn('[MD4H] handleOpenFileLink called with path:', filePath);
+      const rawHref = (message.path as string) || '';
+      console.warn('[MD4H] handleOpenFileLink called with path:', rawHref);
 
-      if (!filePath) {
+      if (!rawHref) {
         console.warn('[MD4H] No path provided for file link');
+        return;
+      }
+
+      // Split off position targets (#L42, #heading, :42) before resolving —
+      // they are not part of the filename.
+      const target = parseFileLinkHref(rawHref);
+      const filePath = target.path;
+      if (!filePath) {
+        console.warn('[MD4H] File link has no path component:', rawHref);
         return;
       }
 
@@ -3147,53 +3182,71 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           console.error('[MD4H] Failed to open image file:', errorMessage, error);
           vscode.window.showErrorMessage(`Failed to open image file: ${errorMessage}`);
         }
-      } else if (fileExtension === '.md') {
-        // Markdown targets open in this editor, not the raw text editor —
-        // navigating between rendered documents should stay rendered
-        // (upstream issue #23). The raw view stays reachable via the
-        // toolbar's source-view button or "Open With…".
-        console.warn('[MD4H] Opening markdown link in Markdown for Humans');
-        try {
-          await vscode.commands.executeCommand(
-            'vscode.openWith',
-            fileUri,
-            'markdownForHumans.editor'
-          );
-          console.warn('[MD4H] Successfully opened markdown link:', fileUri.fsPath);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error('[MD4H] Failed to open markdown link:', errorMessage, error);
-          vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
-        }
       } else {
-        // For text files, use openTextDocument
-        console.warn('[MD4H] Attempting to open text file with openTextDocument');
-        try {
-          const doc = await vscode.workspace.openTextDocument(fileUri);
-          await vscode.window.showTextDocument(doc);
-          console.warn('[MD4H] Successfully opened file link:', fileUri.fsPath);
-        } catch (error) {
-          // If it's not a text file, try vscode.open command as fallback
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.warn('[MD4H] openTextDocument failed, error:', errorMessage);
-          if (errorMessage.includes('Binary') || errorMessage.includes('binary')) {
-            console.warn('[MD4H] File is binary, trying vscode.open command as fallback');
-            try {
-              await vscode.commands.executeCommand('vscode.open', fileUri);
-              console.warn('[MD4H] Opened binary file using vscode.open command');
-            } catch (fallbackError) {
-              console.error('[MD4H] Failed to open file:', fallbackError);
-              vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
-            }
-          } else {
-            throw error;
-          }
-        }
+        await this.openFileTargetInEditor(fileUri, target);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[MD4H] Failed to open file link:', errorMessage, error);
       vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Open a resolved local file, honoring an optional position target.
+   * Markdown opens in this editor (rendered) with the line/heading revealed —
+   * navigating between rendered documents should stay rendered (upstream
+   * issue #23); everything else opens in the text editor with the cursor on
+   * the target line.
+   */
+  private async openFileTargetInEditor(
+    fileUri: vscode.Uri,
+    target?: FileLinkTarget
+  ): Promise<void> {
+    const fileExtension = path.extname(fileUri.fsPath).toLowerCase();
+
+    if (fileExtension === '.md' || fileExtension === '.markdown') {
+      console.warn('[MD4H] Opening markdown link in Markdown for Humans');
+      try {
+        await openRenderedMarkdown(fileUri, { line: target?.line, slug: target?.slug });
+        console.warn('[MD4H] Successfully opened markdown link:', fileUri.fsPath);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[MD4H] Failed to open markdown link:', errorMessage, error);
+        vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
+      }
+    } else {
+      // For text files, use openTextDocument
+      console.warn('[MD4H] Attempting to open text file with openTextDocument');
+      try {
+        const doc = await vscode.workspace.openTextDocument(fileUri);
+        const options: vscode.TextDocumentShowOptions = {};
+        if (typeof target?.line === 'number' && target.line >= 1) {
+          const position = new vscode.Position(
+            target.line - 1,
+            Math.max(0, (target.column ?? 1) - 1)
+          );
+          options.selection = new vscode.Range(position, position);
+        }
+        await vscode.window.showTextDocument(doc, options);
+        console.warn('[MD4H] Successfully opened file link:', fileUri.fsPath);
+      } catch (error) {
+        // If it's not a text file, try vscode.open command as fallback
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn('[MD4H] openTextDocument failed, error:', errorMessage);
+        if (errorMessage.includes('Binary') || errorMessage.includes('binary')) {
+          console.warn('[MD4H] File is binary, trying vscode.open command as fallback');
+          try {
+            await vscode.commands.executeCommand('vscode.open', fileUri);
+            console.warn('[MD4H] Opened binary file using vscode.open command');
+          } catch (fallbackError) {
+            console.error('[MD4H] Failed to open file:', fallbackError);
+            vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
+          }
+        } else {
+          throw error;
+        }
+      }
     }
   }
 
