@@ -56,6 +56,7 @@ import { copyAiContextReference, type SelectionBlockRange } from './utils/aiCont
 import { shouldAutoLink } from './utils/linkValidation';
 import { buildOutlineFromEditor } from './utils/outline';
 import { scrollToHeading } from './utils/scrollToHeading';
+import { classifyLinkHref } from './utils/linkDispatch';
 import { collectExportContent, getDocumentTitle } from './utils/exportContent';
 
 // Helper function for slug generation (same as in linkDialog)
@@ -986,8 +987,11 @@ function initializeEditor(initialContent: string) {
       e.preventDefault();
       e.stopPropagation();
 
-      // External URLs
-      if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) {
+      const linkKind = classifyLinkHref(href);
+
+      // Scheme-qualified URLs (https:, mailto:, vscode:, …) — the host
+      // enforces which schemes actually open.
+      if (linkKind === 'external') {
         console.log('[MD4H Webview] Sending openExternalLink message');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const vscode = (window as any).vscode;
@@ -1003,7 +1007,7 @@ function initializeEditor(initialContent: string) {
       }
 
       // Anchor links (heading links)
-      if (href.startsWith('#')) {
+      if (linkKind === 'anchor') {
         console.log('[MD4H Webview] Handling anchor link:', href);
         const slug = href.slice(1);
         if (editorInstance) {
@@ -1029,7 +1033,7 @@ function initializeEditor(initialContent: string) {
       }
 
       // Detect image files - handle separately
-      if (/\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?)$/i.test(href)) {
+      if (linkKind === 'image') {
         e.preventDefault();
         e.stopPropagation();
 

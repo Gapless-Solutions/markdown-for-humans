@@ -17,6 +17,7 @@ import { setActiveWebviewPanel, getActiveWebviewPanel } from '../activeWebview';
 import { buildResizeBackupLocation, resolveBackupPathWithCollisionDetection } from './imageBackups';
 import { hasSameBlankLineLayout, isMarkdownStructurallyEquivalent } from './markdownAstEquivalence';
 import { applyBlankLinePolicy, type BlankLineMode } from '../shared/blankLinePolicy';
+import { isAllowedExternalUrl } from '../shared/linkSchemes';
 
 /**
  * Coerce text to end with exactly one `\n` (markdownlint MD047). An empty
@@ -2936,9 +2937,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         return;
       }
 
-      // Validate URL format
-      if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('mailto:')) {
-        console.warn('[MD4H] Invalid external URL format:', url);
+      // Enforce the scheme allowlist (http/https/mailto plus the editor's
+      // own vscode: protocol — openExternal handles vscode://file/<path>:<line>
+      // natively by opening the file at that line in the running window).
+      if (!isAllowedExternalUrl(url)) {
+        console.warn('[MD4H] Blocked external URL with disallowed scheme:', url);
         return;
       }
 
@@ -3120,6 +3123,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error('[MD4H] Failed to open image file:', errorMessage, error);
           vscode.window.showErrorMessage(`Failed to open image file: ${errorMessage}`);
+        }
+      } else if (fileExtension === '.md') {
+        // Markdown targets open in this editor, not the raw text editor —
+        // navigating between rendered documents should stay rendered
+        // (upstream issue #23). The raw view stays reachable via the
+        // toolbar's source-view button or "Open With…".
+        console.warn('[MD4H] Opening markdown link in Markdown for Humans');
+        try {
+          await vscode.commands.executeCommand(
+            'vscode.openWith',
+            fileUri,
+            'markdownForHumans.editor'
+          );
+          console.warn('[MD4H] Successfully opened markdown link:', fileUri.fsPath);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error('[MD4H] Failed to open markdown link:', errorMessage, error);
+          vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
         }
       } else {
         // For text files, use openTextDocument
