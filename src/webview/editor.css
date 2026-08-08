@@ -1517,7 +1517,11 @@
   /* The gutter lives in the editable's own left padding, so the drag handle —
      positioned in the margin at `editorRect.left - 32` — is unaffected. */
   .markdown-editor.md-line-numbers {
-    --md-line-gutter-width: calc(var(--md-base-size) * 2.8);
+    /* `gap` is the breathing room between the number column and the text —
+       wide enough that the numbers read as chrome rather than as part of the
+       prose. The number column itself keeps room for four digits. */
+    --md-line-gutter-gap: calc(var(--md-base-size) * 1.6);
+    --md-line-gutter-width: calc(var(--md-base-size) * 3.7);
     padding-left: var(--md-line-gutter-width);
   }
 
@@ -1530,7 +1534,7 @@
     position: absolute;
     top: 0;
     left: calc(-1 * var(--md-line-gutter-width));
-    width: calc(var(--md-line-gutter-width) - 0.7em);
+    width: calc(var(--md-line-gutter-width) - var(--md-line-gutter-gap));
     text-align: right;
     font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, Consolas, monospace);
     font-size: calc(var(--md-base-size) * 0.78);
