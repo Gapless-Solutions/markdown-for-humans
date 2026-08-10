@@ -68,6 +68,7 @@ import {
   normalizeSourceJumpModifier,
   type SourceJumpModifier,
 } from './utils/sourceJump';
+import { setTaskItemsChecked, type TaskStrikeMode } from './utils/taskItems';
 import { shouldAutoLink } from './utils/linkValidation';
 import { buildOutlineFromEditor } from './utils/outline';
 import { scrollToHeading } from './utils/scrollToHeading';
@@ -276,6 +277,14 @@ let sourceJumpModifier: SourceJumpModifier = 'ctrl';
 // exists so the gutter extension can be configured with the right initial state
 // on the very first `update` message.
 let lineNumbersEnabled = false;
+// Mirrors `markdownForHumans.taskItem.strikethrough`. Only `markdown` mode
+// changes the document; `visual` is pure CSS, driven by the data attribute set
+// in applyEditorSettings.
+let taskStrikeMode: TaskStrikeMode = 'visual';
+
+function normalizeTaskStrikeMode(value: string): TaskStrikeMode {
+  return value === 'markdown' || value === 'off' ? value : 'visual';
+}
 
 // Pending document-dirty queries, keyed by requestId. The host replies with
 // `documentDirtyResponse`; we look up the resolver here.
@@ -1720,6 +1729,14 @@ window.addEventListener('message', (event: MessageEvent) => {
         postSourceJump(editor);
         break;
       }
+      case 'setTaskItemChecked': {
+        if (!editor) return;
+        // Silent when the selection touches no task item, or every item is
+        // already in the requested state — a keystroke that does nothing should
+        // do nothing, not report an error.
+        setTaskItemsChecked(editor, message.checked === true, taskStrikeMode);
+        break;
+      }
       case 'revealTarget': {
         if (!editor) return;
         const slug = typeof message.slug === 'string' ? message.slug : undefined;
@@ -2064,6 +2081,13 @@ function applyEditorSettings(message: Record<string, any>) {
   }
   if (typeof message.sourceJumpModifier === 'string') {
     sourceJumpModifier = normalizeSourceJumpModifier(message.sourceJumpModifier);
+  }
+  if (typeof message.taskStrikeMode === 'string') {
+    taskStrikeMode = normalizeTaskStrikeMode(message.taskStrikeMode);
+    // `visual` is styling only, so the mode rides on the root element and the
+    // stylesheet decides — no re-render, and switching it is instant on every
+    // already-open document.
+    document.documentElement.dataset.taskStrike = taskStrikeMode;
   }
   if (typeof message.lineNumbersEnabled === 'boolean') {
     lineNumbersEnabled = message.lineNumbersEnabled;

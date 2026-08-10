@@ -188,6 +188,17 @@
   .markdown-editor ul[data-type="taskList"] li ol {
     padding-left: 1.5em;
   }
+
+  /* Checked items read as done at a glance, without touching the file.
+     The `> div` child is the item's own label text, so a checked parent does
+     not strike its nested sub-tasks. Gated on the root attribute set from
+     `markdownForHumans.taskItem.strikethrough`, which lets the setting switch
+     instantly on already-open documents; `markdown` and `off` modes leave this
+     rule inert (in `markdown` mode the strike lives in the document itself). */
+  :root[data-task-strike="visual"] .markdown-editor ul[data-type="taskList"] li[data-checked="true"]>div {
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
   
   .markdown-editor input[type="checkbox"] {
     cursor: pointer;
