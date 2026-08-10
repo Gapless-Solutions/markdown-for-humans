@@ -14,7 +14,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from '@tiptap/markdown';
 import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import { ListKit } from '@tiptap/extension-list';
-import Link from '@tiptap/extension-link';
+import Link, { isAllowedUri } from '@tiptap/extension-link';
 import { CustomImage } from './extensions/customImage';
 import { lowlight } from 'lowlight';
 import { Mermaid } from './extensions/mermaid';
@@ -70,6 +70,7 @@ import {
 } from './utils/sourceJump';
 import { setTaskItemsChecked, type TaskStrikeMode } from './utils/taskItems';
 import { shouldAutoLink } from './utils/linkValidation';
+import { CUSTOM_LINK_PROTOCOLS, registerCustomLinkProtocols } from './utils/linkProtocols';
 import { buildOutlineFromEditor } from './utils/outline';
 import { scrollToHeading } from './utils/scrollToHeading';
 import { classifyLinkHref } from './utils/linkDispatch';
@@ -637,6 +638,10 @@ function initializeEditor(initialContent: string) {
 
     console.log('[MD4H] Initializing editor...');
 
+    // Before the editor exists: TipTap's Link extension would register these
+    // in onCreate, which fires a tick too late to reach linkify's scanner.
+    registerCustomLinkProtocols();
+
     const mathExtensions = enableMath ? [InlineMath, MathBlock, MathSlashCommand] : [];
     mathFeatureRegistered = enableMath;
 
@@ -720,7 +725,12 @@ function initializeEditor(initialContent: string) {
           // TipTap's XSS allowlist (http/https/mailto/…) rejects unknown
           // schemes, silently disabling the editor's own protocol links —
           // vscode://file/<path>:<line> is a first-class citizen here.
-          protocols: ['vscode', 'vscode-insiders'],
+          //
+          // Deliberately NOT the `protocols` option, which does the same
+          // allowlisting but also makes onCreate re-register the schemes with
+          // linkify — too late by then (see linkProtocols.ts), and it logs two
+          // "already initialized" warnings per document open for the trouble.
+          isAllowedUri: (url: string) => !!isAllowedUri(url, CUSTOM_LINK_PROTOCOLS),
         }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (CustomImage as any).configure({
