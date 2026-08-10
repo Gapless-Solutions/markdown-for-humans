@@ -148,6 +148,23 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Check / uncheck the task item(s) the selection touches. Same thin-trigger
+  // pattern as copyAiContextRef: the webview owns the selection, so it owns the
+  // work. Explicitly set rather than toggle, so a selection covering a mix of
+  // checked and unchecked items has a well-defined result.
+  const registerTaskItemCommand = (command: string, checked: boolean) =>
+    context.subscriptions.push(
+      vscode.commands.registerCommand(command, () => {
+        const panel = getActiveWebviewPanel();
+        if (panel) {
+          panel.webview.postMessage({ type: 'setTaskItemChecked', checked });
+        }
+      })
+    );
+
+  registerTaskItemCommand('markdownForHumans.checkTaskItem', true);
+  registerTaskItemCommand('markdownForHumans.uncheckTaskItem', false);
+
   // Source position jump: rendered view -> raw source at the current block.
   // The webview owns the selection and the block->line math; the command is a
   // thin trigger, same pattern as copyAiContextRef.
