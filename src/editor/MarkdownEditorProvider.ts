@@ -13,6 +13,7 @@ import * as https from 'https';
 import * as dns from 'dns';
 import { isIP } from 'net';
 import { outlineViewProvider, type OutlineEntry } from '../features/outlineView';
+import { markSourceViewIntent } from '../features/reclaimTextEditors';
 import {
   setActiveWebviewPanel,
   getActiveWebviewPanel,
@@ -863,6 +864,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         // editor. When the webview supplies a line (source position jump),
         // place the cursor there and reveal it centered.
         const jumpLine = message.line as number | undefined;
+        // The user asked for the raw source on purpose — tell the reclaim
+        // watcher to stand down for this document, or it would bounce the
+        // source view straight back to rendered.
+        markSourceViewIntent(document.uri);
         if (typeof jumpLine === 'number' && jumpLine >= 1) {
           const position = new vscode.Position(jumpLine - 1, 0);
           void vscode.window.showTextDocument(document, {
@@ -2147,6 +2152,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       }
 
       const uri = vscode.Uri.file(fsPath);
+      // This path opens files as text on purpose (the image-references list
+      // jumps to the referencing line), and its targets are usually markdown —
+      // so the reclaim watcher must not take them over.
+      markSourceViewIntent(uri);
       const doc = await vscode.workspace.openTextDocument(uri);
 
       const zeroBasedLine = typeof line === 'number' && line > 0 ? line - 1 : 0;

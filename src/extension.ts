@@ -9,11 +9,16 @@ import { MarkdownEditorProvider } from './editor/MarkdownEditorProvider';
 import { WordCountFeature } from './features/wordCount';
 import { getActiveWebviewPanel, openRenderedMarkdown } from './activeWebview';
 import { outlineViewProvider } from './features/outlineView';
+import { activateReclaimTextEditors } from './features/reclaimTextEditors';
 
 export function activate(context: vscode.ExtensionContext) {
   // Register the custom editor provider
   const provider = MarkdownEditorProvider.register(context);
   context.subscriptions.push(provider);
+
+  // Reopen markdown that other extensions opened as plain text via
+  // showTextDocument(), which bypasses workbench.editorAssociations.
+  activateReclaimTextEditors(context);
 
   // Clear active context when switching to non-markdown-for-humans editors
   context.subscriptions.push(

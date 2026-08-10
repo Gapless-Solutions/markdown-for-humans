@@ -56,10 +56,50 @@ export enum ProgressLocation {
   Notification = 15,
 }
 
+// Mock tab input types.
+//
+// These are classes rather than plain objects because production code
+// distinguishes tab kinds with `instanceof` — that is the whole point of the
+// tab API over the visible-editors API, so the mock has to preserve it.
+export class TabInputText {
+  constructor(public uri: MockUri) {}
+}
+
+export class TabInputCustom {
+  constructor(
+    public uri: MockUri,
+    public viewType: string
+  ) {}
+}
+
+export class TabInputTextDiff {
+  constructor(
+    public original: MockUri,
+    public modified: MockUri
+  ) {}
+}
+
+export class TabInputNotebook {
+  constructor(
+    public uri: MockUri,
+    public notebookType: string
+  ) {}
+}
+
+// Mock tab groups API
+export const tabGroups = {
+  all: [] as unknown[],
+  activeTabGroup: { activeTab: undefined } as { activeTab: unknown },
+  onDidChangeTabs: jest.fn(() => ({ dispose: jest.fn() })),
+  close: jest.fn(async () => true),
+};
+
 // Mock window API
 export const window = {
   createStatusBarItem: jest.fn(() => mockStatusBarItem),
   activeTextEditor: undefined as unknown,
+  visibleTextEditors: [] as unknown[],
+  tabGroups,
   showErrorMessage: jest.fn(),
   showInformationMessage: jest.fn(),
   showWarningMessage: jest.fn(),
@@ -171,6 +211,9 @@ export function resetAllMocks() {
   mockStatusBarItem.tooltip = '';
   mockStatusBarItem.command = undefined;
   window.activeTextEditor = undefined;
+  window.visibleTextEditors = [];
+  tabGroups.all = [];
+  tabGroups.activeTabGroup = { activeTab: undefined };
 }
 
 // Default export for module mock
@@ -230,6 +273,10 @@ export default {
   TreeItemCollapsibleState,
   ThemeIcon,
   ThemeColor,
+  TabInputText,
+  TabInputCustom,
+  TabInputTextDiff,
+  TabInputNotebook,
 };
 
 // Minimal Range class

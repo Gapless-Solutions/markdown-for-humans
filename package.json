@@ -63,6 +63,9 @@
     "human-friendly"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
   "contributes": {
     "customEditors": [
       {
@@ -293,6 +296,22 @@
             "No mouse gesture; only the command palette entry"
           ],
           "description": "Modifier key for the double-click gesture that opens the raw markdown source at the clicked block's line.",
+          "scope": "application"
+        },
+        "markdownForHumans.reclaimTextEditors": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto",
+          "enumDescriptions": [
+            "Reopen only when your workbench.editorAssociations already makes this your default markdown editor",
+            "Always reopen markdown that was opened as plain text",
+            "Never reopen; leave markdown wherever another extension put it"
+          ],
+          "markdownDescription": "Reopen markdown files that other extensions opened in the plain text editor.\n\nSome extensions open files with an API that cannot resolve a custom editor, so they bypass `#workbench.editorAssociations#` — clicking a `.md` link in an AI chat sidebar is the common case. When that happens, this reopens the file here and keeps your place in the document.\n\nYour own source views (the split source button, *Open Source at This Position*) are never affected.",
           "scope": "application"
         },
         "markdownForHumans.lineNumbers.enabled": {
