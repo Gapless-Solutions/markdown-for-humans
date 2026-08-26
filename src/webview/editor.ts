@@ -44,7 +44,10 @@ import {
 } from './extensions/lineNumberGutter';
 import { DocumentAuditExtension } from './features/auditDocument';
 import { createFormattingToolbar, createTableMenu, updateToolbarStates } from './BubbleMenuView';
-import { getEditorMarkdownForSync } from './utils/markdownSerialization';
+import {
+  getEditorMarkdownForSync,
+  MarkdownSerializationLossError,
+} from './utils/markdownSerialization';
 import type { BlankLineMode } from '../shared/blankLinePolicy';
 import { installBlankLineLexerNormalizer } from './utils/markedLexerNormalizer';
 import {
@@ -559,6 +562,17 @@ function immediateUpdate() {
     }, 50); // Small delay to ensure edit is processed first
   } catch (error) {
     console.error('[MD4H] Error in immediate save:', error);
+    // A silent no-save is the same class of failure as a silent bad save: the
+    // user believes their file is on disk either way. Say what happened.
+    if (error instanceof MarkdownSerializationLossError) {
+      vscode.postMessage({
+        type: 'showError',
+        message:
+          `Markdown for Humans did not save this file: a "${error.nodeType}" block ` +
+          'could not be converted back to markdown, and saving would have deleted it. ' +
+          'Your file on disk is unchanged \u2014 open it in the plain text editor to keep working.',
+      });
+    }
   }
 }
 

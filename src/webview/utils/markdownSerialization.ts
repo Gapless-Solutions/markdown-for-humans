@@ -84,6 +84,28 @@ export function stripEmptyDocParagraphsFromJson(doc: JSONContent): JSONContent {
   };
 }
 
+/**
+ * Thrown when a top-level block produces no markdown at all.
+ *
+ * The sync path used to treat this as an empty paragraph, which silently
+ * deleted the block from the file — three real documents lost a whole fenced
+ * code block and its heading that way (2026-08-25). Refusing to produce a
+ * document is always better than producing one that is quietly missing a
+ * block: callers abandon the sync and the bytes on disk are left alone.
+ */
+export class MarkdownSerializationLossError extends Error {
+  readonly nodeType: string;
+
+  constructor(nodeType: string) {
+    super(
+      `Refusing to serialize: a "${nodeType}" block produced no markdown, ` +
+        'so writing it back would silently delete that block.'
+    );
+    this.name = 'MarkdownSerializationLossError';
+    this.nodeType = nodeType;
+  }
+}
+
 function serializeSingleNode(node: JSONContent, serialize: (json: JSONContent) => string): string {
   try {
     return serialize({ type: 'doc', content: [node] }).trim();
@@ -193,12 +215,13 @@ export function getEditorMarkdownForSync(
       } else {
         const nodeMarkdown = serializeBlockMarkdown(node, serialize);
         if (nodeMarkdown === '') {
-          // Node serialized to nothing (unrecognised type, etc.) – treat it
-          // as if it were an empty paragraph so blank-line intent is kept.
-          if (blankLineMode === 'preserve') {
-            pendingBlanks++;
-          }
-          continue;
+          // The node is NOT an empty paragraph (those are handled above), so
+          // it carries content the serializer could not render. Dropping it
+          // here is what deleted whole code blocks from real documents; the
+          // only safe answer is to abandon the sync.
+          throw new MarkdownSerializationLossError(
+            typeof node.type === 'string' ? node.type : 'unknown'
+          );
         }
         if (result !== '') {
           result += '\n\n';
@@ -212,7 +235,11 @@ export function getEditorMarkdownForSync(
     }
 
     return result;
-  } catch {
+  } catch (error) {
+    // The fallback serializer is for recoverable failures. A detected content
+    // loss must reach the caller, or the fallback would quietly write the very
+    // document we just refused to build.
+    if (error instanceof MarkdownSerializationLossError) throw error;
     return getFallbackMarkdown();
   }
 }
