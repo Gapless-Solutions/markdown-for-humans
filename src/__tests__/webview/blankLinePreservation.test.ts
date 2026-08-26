@@ -1,7 +1,10 @@
 /** @jest-environment node */
 
 import { normalizeBlankLineGreedyTokens } from '../../webview/utils/markedLexerNormalizer';
-import { getEditorMarkdownForSync } from '../../webview/utils/markdownSerialization';
+import {
+  getEditorMarkdownForSync,
+  MarkdownSerializationLossError,
+} from '../../webview/utils/markdownSerialization';
 import type { JSONContent } from '@tiptap/core';
 
 // ─── Normalizer tests ────────────────────────────────────────────────────────
@@ -272,7 +275,11 @@ describe('getEditorMarkdownForSync – blank line preservation across block type
     expect(md).not.toContain('\n\n\n');
   });
 
-  it('handles node that serializes to empty by treating it as blank', () => {
+  // Until 2026-08-26 this asserted the opposite: an unmapped node was folded
+  // into a blank line, silently dropping its content. That is the bug that ate
+  // a fenced code block out of three real documents - the node below carries
+  // the text 'x', and the old expectation had no 'x' anywhere in it.
+  it('refuses to serialize a node that produces no markdown, rather than dropping it', () => {
     const serialize = makeSerialize({
       heading: '## A',
       paragraph: 'C',
@@ -287,9 +294,8 @@ describe('getEditorMarkdownForSync – blank line preservation across block type
       serialize
     );
 
-    const md = getEditorMarkdownForSync(editor);
-    // unknownNode serialized to '' → treated as blank → extra \n
-    expect(md).toBe('## A\n\n\nC');
+    expect(() => getEditorMarkdownForSync(editor)).toThrow(MarkdownSerializationLossError);
+    expect(() => getEditorMarkdownForSync(editor)).toThrow(/unknownNode/);
   });
 
   it('strips extra blank lines in strip mode', () => {
