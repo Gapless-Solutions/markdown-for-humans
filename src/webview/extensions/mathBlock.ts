@@ -17,7 +17,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { JSONContent, MarkdownRendererHelpers, MarkdownToken } from '@tiptap/core';
-import katex from 'katex';
+import { getKatex, loadKatex } from '../utils/katexLoader';
 import { preserveProseSpaces } from '../utils/preserveProseSpaces';
 
 interface MathBlockToken {
@@ -146,6 +146,14 @@ export const MathBlock = Node.create({
         if (!currentLatex.trim()) {
           render.innerHTML =
             '<div class="md4h-math-block-placeholder">Empty equation. Double-click to edit.</div>';
+          return;
+        }
+
+        const katex = getKatex();
+        if (!katex) {
+          // Show the source until the KaTeX chunk arrives, then render for real.
+          render.textContent = currentLatex;
+          loadKatex().then(draw, () => undefined);
           return;
         }
 
