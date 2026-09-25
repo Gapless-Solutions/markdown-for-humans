@@ -174,6 +174,26 @@ for (const [bundleName, config] of Object.entries(CRITICAL_FEATURES)) {
   console.log('');
 }
 
+// The lazily loaded bundles - the host's export module and the webview's
+// split chunks - carry no feature markers but must be stripped all the same.
+const lazyBundles = [
+  'dist/documentExport.js',
+  ...(fs.existsSync('dist/chunks')
+    ? fs.readdirSync('dist/chunks').filter(f => f.endsWith('.js')).map(f => `dist/chunks/${f}`)
+    : []),
+];
+console.log(`📦 Checking ${lazyBundles.length} lazily loaded bundles`);
+for (const file of lazyBundles) {
+  const filePath = path.join(process.cwd(), file);
+  if (!fs.existsSync(filePath)) {
+    console.error(`   ❌ File not found: ${file}`);
+    hasErrors = true;
+  } else if (!assertNoProdConsoleCalls(file, fs.readFileSync(filePath, 'utf8'))) {
+    hasErrors = true;
+  }
+}
+console.log('');
+
 // File size checks
 console.log('📊 Bundle sizes:');
 const sizeChecks = [

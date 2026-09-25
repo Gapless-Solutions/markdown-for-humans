@@ -5,7 +5,24 @@
  */
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import mermaid from 'mermaid';
+import type { Mermaid as MermaidApi } from 'mermaid';
+
+// Mermaid (with its parser and cytoscape layouts) is well over half of the
+// webview bundle. Importing it statically made every editor open pay for it
+// before the first paint, even for documents with no diagram, so it is loaded
+// on the first diagram render instead and lands in its own chunk.
+let mermaidModule: Promise<MermaidApi> | null = null;
+
+function loadMermaid(): Promise<MermaidApi> {
+  if (!mermaidModule) {
+    mermaidModule = import('mermaid').then(m => m.default);
+    // A failed chunk load must not poison every later render.
+    mermaidModule.catch(() => {
+      mermaidModule = null;
+    });
+  }
+  return mermaidModule;
+}
 
 /**
  * Detect if VS Code is in dark mode by checking CSS variables
@@ -27,22 +44,6 @@ function isDarkMode(): boolean {
   }
   return false;
 }
-
-/**
- * Initialize mermaid with theme based on VS Code theme
- */
-function initializeMermaid() {
-  const theme = isDarkMode() ? 'dark' : 'default';
-  mermaid.initialize({
-    startOnLoad: false,
-    theme,
-    securityLevel: 'strict', // Safer for VS Code webview
-    fontFamily: 'inherit',
-  });
-}
-
-// Initialize on load
-initializeMermaid();
 
 export const Mermaid = Node.create({
   name: 'mermaid',
@@ -164,11 +165,12 @@ export const Mermaid = Node.create({
         }
 
         try {
+          const mermaid = await loadMermaid();
           const theme = isDarkMode() ? 'dark' : 'default';
           mermaid.initialize({
             startOnLoad: false,
             theme,
-            securityLevel: 'strict',
+            securityLevel: 'strict', // Safer for VS Code webview
             fontFamily: 'inherit',
           });
           // Clear previous content to prevent duplicates

@@ -22,11 +22,21 @@ const isProduction = args.includes('--prod') || process.env.NODE_ENV === 'produc
 const isWatch = args.includes('--watch');
 const noSourcemap = args.includes('--no-sourcemap');
 
+const CHUNK_DIR = 'dist/chunks';
+
 const buildOptions = {
-  entryPoints: ['src/webview/editor.ts'],
+  // Named entry so the outputs stay dist/webview.js and dist/webview.css.
+  entryPoints: { webview: 'src/webview/editor.ts' },
   bundle: true,
-  outfile: 'dist/webview.js',
-  format: 'iife',
+  outdir: 'dist',
+  // ESM + splitting turns every dynamic import() in the webview (mermaid, the
+  // audit and math/mermaid editors) into a chunk fetched on first use. As an
+  // IIFE they were all inlined, and the editor could not paint until the whole
+  // bundle had been parsed and evaluated. Loaded via <script type="module">,
+  // and the chunks need the webview's cspSource in script-src.
+  format: 'esm',
+  splitting: true,
+  chunkNames: 'chunks/[name]-[hash]',
   sourcemap: !noSourcemap && !isProduction, // Disable for marketplace builds
   minify: isProduction,
   treeShaking: true,
@@ -48,6 +58,10 @@ const buildOptions = {
 };
 
 async function build() {
+  // Chunk names are content-hashed, so a rebuild would otherwise leave every
+  // previous generation behind in dist/ (and in the packaged VSIX).
+  fs.rmSync(CHUNK_DIR, { recursive: true, force: true });
+
   if (isWatch) {
     // Watch mode - development build
     const context = await esbuild.context({
@@ -65,7 +79,13 @@ async function build() {
       await esbuild.build(buildOptions);
       if (isProduction || noSourcemap) {
         // Ensure release builds don't leave stale sourcemaps in dist/
-        for (const mapFile of ['dist/webview.js.map', 'dist/webview.css.map']) {
+        const chunkMaps = fs.existsSync(CHUNK_DIR)
+          ? fs
+              .readdirSync(CHUNK_DIR)
+              .filter(f => f.endsWith('.map'))
+              .map(f => `${CHUNK_DIR}/${f}`)
+          : [];
+        for (const mapFile of ['dist/webview.js.map', 'dist/webview.css.map', ...chunkMaps]) {
           try {
             fs.unlinkSync(mapFile);
           } catch {

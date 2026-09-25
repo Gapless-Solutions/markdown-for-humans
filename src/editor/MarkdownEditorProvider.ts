@@ -3757,7 +3757,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <meta http-equiv="Content-Security-Policy"
               content="default-src 'none';
                        style-src ${webview.cspSource} 'unsafe-inline';
-                       script-src 'nonce-${nonce}';
+                       script-src 'nonce-${nonce}' ${webview.cspSource};
                        font-src ${webview.cspSource};
                        img-src ${webview.cspSource} https: data: blob:;">
         
@@ -3766,7 +3766,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       </head>
       <body>
         <div id="editor"></div>
-        <script nonce="${nonce}" src="${scriptUri}"></script>
+        <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>
     `;
